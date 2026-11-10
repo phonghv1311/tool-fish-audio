@@ -1,7 +1,7 @@
 /**
  * Fish Audio Web Application Server
  * Built with native Node.js (Zero external dependencies)
- * Hỗ trợ xuất âm thanh đơn, xuất full bài WAV/MP3 chuẩn RIFF PCM và phụ đề SRT đồng bộ.
+ * Tích hợp Keep-Alive Agent Connection Pool, LRU Memory Cache, Progressive Streaming & Zero-Copy Audio Assembly.
  */
 
 const http = require('http');
@@ -9,6 +9,16 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+
+const { getKeepAliveAgent, fetchTtsChunk } = require('./lib/network');
+const { globalAudioCache } = require('./lib/cache');
+const {
+  splitTextIntoSentences,
+  createWavHeader,
+  extractPcmFromWav,
+  formatSrtTime,
+  fastPcmConcat
+} = require('./lib/audio');
 
 const INITIAL_PORT = parseInt(process.env.PORT || '3000', 10);
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -39,190 +49,14 @@ function sendJSON(res, statusCode, data) {
     'Content-Type': 'application/json; charset=UTF-8',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, model'
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, model, X-Requested-With',
+    'Access-Control-Expose-Headers': 'X-Cache, X-Response-Time'
   });
   res.end(body);
 }
 
 /**
- * Phân tách văn bản dài thành các câu tự nhiên
- */
-function splitTextIntoSentences(text, maxChunkLen = 220) {
-  const paragraphs = text.split(/\n+/);
-  const chunks = [];
-
-  for (const para of paragraphs) {
-    const trimmed = para.trim();
-    if (!trimmed) continue;
-
-    const rawSentences = trimmed.match(/[^.!?…;]+[.!?…;]+|[^.!?…;]+$/g) || [trimmed];
-    let current = '';
-
-    for (const raw of rawSentences) {
-      const sentence = raw.trim();
-      if (!sentence) continue;
-
-      if ((current + ' ' + sentence).trim().length <= maxChunkLen) {
-        current = (current + ' ' + sentence).trim();
-      } else {
-        if (current) chunks.push(current);
-        if (sentence.length > maxChunkLen) {
-          const parts = sentence.match(new RegExp(`.{1,${maxChunkLen}}(\\s+|$)|.{1,${maxChunkLen}}`, 'g')) || [sentence];
-          for (const p of parts) {
-            if (p.trim()) chunks.push(p.trim());
-          }
-          current = '';
-        } else {
-          current = sentence;
-        }
-      }
-    }
-
-    if (current) chunks.push(current);
-  }
-
-  return chunks;
-}
-
-/**
- * Tạo chuẩn 44-byte WAV header cho luồng PCM
- */
-function createWavHeader(dataLength, sampleRate = 44100, numChannels = 1, bitsPerSample = 16) {
-  const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
-  const blockAlign = numChannels * (bitsPerSample / 8);
-  const buffer = Buffer.alloc(44);
-
-  buffer.write('RIFF', 0);
-  buffer.writeUInt32LE(36 + dataLength, 4);
-  buffer.write('WAVE', 8);
-  buffer.write('fmt ', 12);
-  buffer.writeUInt32LE(16, 16);
-  buffer.writeUInt16LE(1, 20); // PCM format
-  buffer.writeUInt16LE(numChannels, 22);
-  buffer.writeUInt32LE(sampleRate, 24);
-  buffer.writeUInt32LE(byteRate, 28);
-  buffer.writeUInt16LE(blockAlign, 32);
-  buffer.writeUInt16LE(bitsPerSample, 34);
-  buffer.write('data', 36);
-  buffer.writeUInt32LE(dataLength, 40);
-
-  return buffer;
-}
-
-/**
- * Trích xuất raw PCM và thông số từ buffer WAV trả về từ Fish Audio
- */
-function extractPcmFromWav(wavBuffer) {
-  let dataIndex = wavBuffer.indexOf(Buffer.from('data'));
-  let sampleRate = 44100;
-  let numChannels = 1;
-  let bitsPerSample = 16;
-
-  if (wavBuffer.length >= 36) {
-    numChannels = wavBuffer.readUInt16LE(22) || 1;
-    sampleRate = wavBuffer.readUInt32LE(24) || 44100;
-    bitsPerSample = wavBuffer.readUInt16LE(34) || 16;
-  }
-
-  let pcmData;
-  if (dataIndex !== -1 && dataIndex + 8 <= wavBuffer.length) {
-    pcmData = wavBuffer.slice(dataIndex + 8);
-  } else {
-    pcmData = wavBuffer.slice(44);
-  }
-
-  const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
-  const durationSec = byteRate > 0 ? pcmData.length / byteRate : 0;
-
-  return { pcmData, sampleRate, numChannels, bitsPerSample, byteRate, durationSec };
-}
-
-/**
- * Định dạng số giây sang chuẩn SRT (HH:MM:SS,mmm)
- */
-function formatSrtTime(totalSeconds) {
-  const pad = (n, width) => String(n).padStart(width, '0');
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = Math.floor(totalSeconds % 60);
-  const milliseconds = Math.floor((totalSeconds % 1) * 1000);
-
-  return `${pad(hours, 2)}:${pad(minutes, 2)}:${pad(seconds, 2)},${pad(milliseconds, 3)}`;
-}
-
-/**
- * Gọi đơn lẻ 1 chunk TTS từ Fish Audio kèm cơ chế Retry khi gặp 429
- */
-function fetchSingleTTS(text, opts, retries = 3) {
-  return new Promise((resolve, reject) => {
-    function attempt(remainingAttempts) {
-      const requestBody = {
-        text: text,
-        format: opts.format || 'wav',
-        latency: 'balanced',
-        prosody: {
-          speed: opts.speed || 1.0,
-          volume: opts.volume || 0
-        }
-      };
-
-      if (opts.format === 'mp3') {
-        requestBody.mp3_bitrate = 128;
-      }
-
-      if (opts.voice) {
-        requestBody.reference_id = opts.voice;
-      }
-
-      const postData = JSON.stringify(requestBody);
-
-      const apiOptions = {
-        hostname: 'api.fish.audio',
-        port: 443,
-        path: '/v1/tts',
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${opts.apiKey}`,
-          'Content-Type': 'application/json',
-          'model': opts.model || 's2.1-pro-free',
-          'Content-Length': Buffer.byteLength(postData)
-        }
-      };
-
-      const req = https.request(apiOptions, res => {
-        const dataChunks = [];
-        res.on('data', c => dataChunks.push(c));
-        res.on('end', () => {
-          const fullBuffer = Buffer.concat(dataChunks);
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            resolve(fullBuffer);
-          } else if ((res.statusCode === 429 || res.statusCode >= 500) && remainingAttempts > 0) {
-            const waitTime = (4 - remainingAttempts) * 800 + Math.floor(Math.random() * 400);
-            setTimeout(() => attempt(remainingAttempts - 1), waitTime);
-          } else {
-            reject(new Error(`API Error (${res.statusCode}): ${fullBuffer.toString()}`));
-          }
-        });
-      });
-
-      req.on('error', err => {
-        if (remainingAttempts > 0) {
-          setTimeout(() => attempt(remainingAttempts - 1), 800);
-        } else {
-          reject(err);
-        }
-      });
-
-      req.write(postData);
-      req.end();
-    }
-
-    attempt(retries);
-  });
-}
-
-/**
- * Xử lý song song N luồng bảo toàn thứ tự kết quả
+ * Bộ điều phối luồng song song (Concurrency Worker Pool)
  */
 async function processConcurrently(items, concurrency, workerFn) {
   const results = new Array(items.length);
@@ -243,7 +77,7 @@ async function processConcurrently(items, concurrency, workerFn) {
 }
 
 /**
- * Handle TTS generation proxy (Đơn lẻ)
+ * Handle TTS generation proxy (Đoạn đơn) có tích hợp LRU Cache & Keep-Alive
  */
 function handleTTS(req, res) {
   let body = '';
@@ -257,7 +91,7 @@ function handleTTS(req, res) {
     }
   });
 
-  req.on('end', () => {
+  req.on('end', async () => {
     let payload;
     try {
       payload = JSON.parse(body || '{}');
@@ -265,94 +99,66 @@ function handleTTS(req, res) {
       return sendJSON(res, 400, { error: 'JSON payload không hợp lệ' });
     }
 
-    if (!payload.text || typeof payload.text !== 'string' || !payload.text.trim()) {
+    const text = (payload.text || '').trim();
+    if (!text) {
       return sendJSON(res, 400, { error: 'Vui lòng cung cấp nội dung văn bản (text).' });
     }
 
     const apiKey = (payload.apiKey && payload.apiKey.trim()) ? payload.apiKey.trim() : DEFAULT_API_KEY;
     const model = payload.model || 's2.1-pro-free';
+    const format = payload.format || 'mp3';
+    const voice = payload.reference_id ? payload.reference_id.trim() : '';
+    const speed = payload.prosody && typeof payload.prosody.speed === 'number' ? payload.prosody.speed : 1.0;
+    const volume = payload.prosody && typeof payload.prosody.volume === 'number' ? payload.prosody.volume : 0;
 
-    const requestBody = {
-      text: payload.text.trim(),
-      format: payload.format || 'mp3'
-    };
+    const cacheParams = { text, voice, model, format, speed, volume };
 
-    if (payload.reference_id && payload.reference_id.trim()) {
-      requestBody.reference_id = payload.reference_id.trim();
+    // 1. Kiểm tra Cache
+    const cachedBuffer = globalAudioCache.get(cacheParams);
+    if (cachedBuffer) {
+      const contentType = format === 'wav' ? 'audio/wav' : 'audio/mpeg';
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Content-Length': cachedBuffer.length,
+        'Content-Disposition': `inline; filename="speech.${format}"`,
+        'Access-Control-Allow-Origin': '*',
+        'X-Cache': 'HIT'
+      });
+      return res.end(cachedBuffer);
     }
 
-    if (payload.mp3_bitrate && requestBody.format === 'mp3') {
-      requestBody.mp3_bitrate = parseInt(payload.mp3_bitrate, 10);
-    }
+    // 2. Cache Miss: Gọi API qua Keep-Alive Agent
+    try {
+      const audioBuffer = await fetchTtsChunk(text, {
+        apiKey,
+        model,
+        format,
+        voice,
+        speed,
+        volume
+      });
 
-    if (payload.prosody && typeof payload.prosody === 'object') {
-      requestBody.prosody = {
-        speed: typeof payload.prosody.speed === 'number' ? payload.prosody.speed : 1.0,
-        volume: typeof payload.prosody.volume === 'number' ? payload.prosody.volume : 0
-      };
-    }
+      // Lưu vào cache
+      globalAudioCache.set(cacheParams, audioBuffer);
 
-    if (payload.latency) requestBody.latency = payload.latency;
-    if (typeof payload.normalize === 'boolean') requestBody.normalize = payload.normalize;
-    if (typeof payload.temperature === 'number') requestBody.temperature = payload.temperature;
-    if (typeof payload.top_p === 'number') requestBody.top_p = payload.top_p;
-
-    const postData = JSON.stringify(requestBody);
-
-    const apiOptions = {
-      hostname: 'api.fish.audio',
-      port: 443,
-      path: '/v1/tts',
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'model': model,
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    };
-
-    const apiReq = https.request(apiOptions, apiRes => {
-      const contentType = apiRes.headers['content-type'] || (requestBody.format === 'wav' ? 'audio/wav' : 'audio/mpeg');
-      const statusCode = apiRes.statusCode;
-
-      if (statusCode >= 200 && statusCode < 300) {
-        res.writeHead(statusCode, {
-          'Content-Type': contentType,
-          'Content-Disposition': `inline; filename="speech.${requestBody.format}"`,
-          'Access-Control-Allow-Origin': '*'
-        });
-        apiRes.pipe(res);
-      } else {
-        let errBody = '';
-        apiRes.on('data', chunk => { errBody += chunk; });
-        apiRes.on('end', () => {
-          let parsedErr;
-          try {
-            parsedErr = JSON.parse(errBody);
-          } catch (e) {
-            parsedErr = { raw: errBody };
-          }
-          sendJSON(res, statusCode, {
-            error: `Fish Audio API error (${statusCode})`,
-            details: parsedErr
-          });
-        });
-      }
-    });
-
-    apiReq.on('error', err => {
+      const contentType = format === 'wav' ? 'audio/wav' : 'audio/mpeg';
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Content-Length': audioBuffer.length,
+        'Content-Disposition': `inline; filename="speech.${format}"`,
+        'Access-Control-Allow-Origin': '*',
+        'X-Cache': 'MISS'
+      });
+      res.end(audioBuffer);
+    } catch (err) {
       console.error('Lỗi khi gọi Fish Audio TTS:', err);
       sendJSON(res, 502, { error: 'Không thể kết nối tới Fish Audio API', details: err.message });
-    });
-
-    apiReq.write(postData);
-    apiReq.end();
+    }
   });
 }
 
 /**
- * Handle Batch Full Bài & SRT generation proxy
+ * Handle Batch Full Bài & SRT generation proxy (10 luồng song song + Cache)
  */
 function handleBatchTTS(req, res) {
   let body = '';
@@ -386,24 +192,35 @@ function handleBatchTTS(req, res) {
     const speed = payload.prosody && typeof payload.prosody.speed === 'number' ? payload.prosody.speed : 1.0;
     const volume = payload.prosody && typeof payload.prosody.volume === 'number' ? payload.prosody.volume : 0;
     const chunkSize = payload.chunkSize || 220;
+    const concurrency = Math.min(Math.max(parseInt(payload.concurrency || '10', 10), 1), 25);
 
-    const chunks = splitTextIntoSentences(text, chunkSize);
+    const chunks = splitTextIntoSentences(text, chunkSize, true);
     if (!chunks.length) {
       return sendJSON(res, 400, { error: 'Không có câu hợp lệ để tạo giọng nói.' });
     }
 
-    const concurrency = Math.min(parseInt(payload.concurrency || '10', 10), 15);
-
     try {
-      // Xử lý song song 10 luồng
+      let cacheHitsCount = 0;
+
+      // Xử lý song song N luồng bảo toàn thứ tự kết quả
       const processedResults = await processConcurrently(
         chunks,
         concurrency,
         async (chunkText, index) => {
-          const audioBuffer = await fetchSingleTTS(chunkText, {
+          const cacheParams = { text: chunkText, voice, model, format, speed, volume };
+          const cached = globalAudioCache.get(cacheParams);
+
+          if (cached) {
+            cacheHitsCount++;
+            return { index, text: chunkText, buffer: cached, fromCache: true };
+          }
+
+          const audioBuffer = await fetchTtsChunk(chunkText, {
             format, apiKey, model, voice, speed, volume
           }, 3);
-          return { index, text: chunkText, buffer: audioBuffer };
+
+          globalAudioCache.set(cacheParams, audioBuffer);
+          return { index, text: chunkText, buffer: audioBuffer, fromCache: false };
         }
       );
 
@@ -414,7 +231,7 @@ function handleBatchTTS(req, res) {
       let masterChannels = 1;
       let masterBits = 16;
 
-      // Ghép nối theo đúng thứ tự 0 -> N-1
+      // Ghép nối tuần tự theo đúng chỉ số 0 -> N-1
       for (let i = 0; i < processedResults.length; i++) {
         const item = processedResults[i];
         let chunkDuration = 0;
@@ -441,11 +258,11 @@ function handleBatchTTS(req, res) {
 
       let finalAudioBuffer;
       if (format === 'wav') {
-        const totalPcm = Buffer.concat(pcmList);
+        const totalPcm = fastPcmConcat(pcmList);
         const header = createWavHeader(totalPcm.length, masterSampleRate, masterChannels, masterBits);
         finalAudioBuffer = Buffer.concat([header, totalPcm]);
       } else {
-        finalAudioBuffer = Buffer.concat(pcmList);
+        finalAudioBuffer = fastPcmConcat(pcmList);
       }
 
       const srtText = srtEntries.join('\n');
@@ -457,12 +274,136 @@ function handleBatchTTS(req, res) {
         formattedDuration: formatSrtTime(currentTime),
         chunksCount: chunks.length,
         concurrency: concurrency,
+        cacheHitsCount: cacheHitsCount,
         audioBase64: finalAudioBuffer.toString('base64'),
         srt: srtText
       });
     } catch (err) {
       console.error('Lỗi khi tổng hợp full bài song song:', err);
       sendJSON(res, 502, { error: 'Lỗi tổng hợp âm thanh full bài song song', details: err.message });
+    }
+  });
+}
+
+/**
+ * Handle Progressive Streaming (NDJSON Stream để phát ngay câu 1)
+ */
+function handleBatchStream(req, res) {
+  let body = '';
+  req.on('data', chunk => body += chunk);
+
+  req.on('end', async () => {
+    let payload;
+    try {
+      payload = JSON.parse(body || '{}');
+    } catch (e) {
+      return sendJSON(res, 400, { error: 'JSON không hợp lệ' });
+    }
+
+    const text = (payload.text || '').trim();
+    if (!text) {
+      return sendJSON(res, 400, { error: 'Vui lòng cung cấp nội dung văn bản.' });
+    }
+
+    const format = (payload.format || 'wav').toLowerCase();
+    const apiKey = (payload.apiKey && payload.apiKey.trim()) ? payload.apiKey.trim() : DEFAULT_API_KEY;
+    const model = payload.model || 's2.1-pro-free';
+    const voice = payload.reference_id ? payload.reference_id.trim() : '';
+    const speed = payload.prosody && typeof payload.prosody.speed === 'number' ? payload.prosody.speed : 1.0;
+    const volume = payload.prosody && typeof payload.prosody.volume === 'number' ? payload.prosody.volume : 0;
+    const chunkSize = payload.chunkSize || 220;
+    const concurrency = Math.min(Math.max(parseInt(payload.concurrency || '10', 10), 1), 25);
+
+    const chunks = splitTextIntoSentences(text, chunkSize, true);
+
+    // Kích hoạt Chunked NDJSON stream
+    res.writeHead(200, {
+      'Content-Type': 'application/x-ndjson; charset=UTF-8',
+      'Transfer-Encoding': 'chunked',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-cache'
+    });
+
+    const pcmList = new Array(chunks.length);
+    const durations = new Array(chunks.length);
+    let masterSampleRate = 44100;
+    let masterChannels = 1;
+    let masterBits = 16;
+
+    try {
+      await processConcurrently(chunks, concurrency, async (chunkText, index) => {
+        const cacheParams = { text: chunkText, voice, model, format, speed, volume };
+        let buffer = globalAudioCache.get(cacheParams);
+        let fromCache = true;
+
+        if (!buffer) {
+          fromCache = false;
+          buffer = await fetchTtsChunk(chunkText, { format, apiKey, model, voice, speed, volume }, 3);
+          globalAudioCache.set(cacheParams, buffer);
+        }
+
+        let chunkDuration = 0;
+        if (format === 'wav') {
+          const wavInfo = extractPcmFromWav(buffer);
+          pcmList[index] = wavInfo.pcmData;
+          masterSampleRate = wavInfo.sampleRate;
+          masterChannels = wavInfo.numChannels;
+          masterBits = wavInfo.bitsPerSample;
+          chunkDuration = wavInfo.durationSec;
+        } else {
+          pcmList[index] = buffer;
+          chunkDuration = buffer.length / 16000;
+        }
+        durations[index] = chunkDuration;
+
+        // Bắn ngay chunk về cho Client (Phát ngay câu đầu!)
+        const chunkEvent = {
+          type: 'chunk',
+          index: index,
+          text: chunkText,
+          duration: chunkDuration,
+          fromCache: fromCache,
+          audioBase64: buffer.toString('base64'),
+          format: format
+        };
+        res.write(JSON.stringify(chunkEvent) + '\n');
+      });
+
+      // Tạo SRT và Audio gộp hoàn chỉnh
+      const srtEntries = [];
+      let currentTime = 0;
+      for (let i = 0; i < chunks.length; i++) {
+        const startStr = formatSrtTime(currentTime);
+        const endTime = currentTime + (durations[i] || 0);
+        const endStr = formatSrtTime(endTime);
+        srtEntries.push(`${i + 1}\n${startStr} --> ${endStr}\n${chunks[i]}\n`);
+        currentTime = endTime;
+      }
+
+      let finalAudioBuffer;
+      if (format === 'wav') {
+        const totalPcm = fastPcmConcat(pcmList);
+        const header = createWavHeader(totalPcm.length, masterSampleRate, masterChannels, masterBits);
+        finalAudioBuffer = Buffer.concat([header, totalPcm]);
+      } else {
+        finalAudioBuffer = fastPcmConcat(pcmList);
+      }
+
+      const completeEvent = {
+        type: 'complete',
+        format: format,
+        duration: currentTime,
+        formattedDuration: formatSrtTime(currentTime),
+        chunksCount: chunks.length,
+        srt: srtEntries.join('\n'),
+        fullAudioBase64: finalAudioBuffer.toString('base64'),
+        cacheStats: globalAudioCache.getStats()
+      };
+      res.write(JSON.stringify(completeEvent) + '\n');
+      res.end();
+    } catch (err) {
+      res.write(JSON.stringify({ type: 'error', error: err.message }) + '\n');
+      res.end();
     }
   });
 }
@@ -487,6 +428,7 @@ function handleModels(req, res, queryParams) {
     port: 443,
     path: apiPath,
     method: 'GET',
+    agent: getKeepAliveAgent(),
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Accept': 'application/json'
@@ -560,7 +502,8 @@ function startServer(port, retriesLeft = 10) {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, model'
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, model, X-Requested-With',
+        'Access-Control-Expose-Headers': 'X-Cache, X-Response-Time'
       });
       return res.end();
     }
@@ -574,8 +517,21 @@ function startServer(port, retriesLeft = 10) {
       return handleBatchTTS(req, res);
     }
 
+    if (pathname === '/api/batch-stream' && req.method === 'POST') {
+      return handleBatchStream(req, res);
+    }
+
     if (pathname === '/api/models' && req.method === 'GET') {
       return handleModels(req, res, parsedUrl.query);
+    }
+
+    if (pathname === '/api/cache-stats' && req.method === 'GET') {
+      return sendJSON(res, 200, globalAudioCache.getStats());
+    }
+
+    if (pathname === '/api/cache-clear' && req.method === 'POST') {
+      globalAudioCache.clear();
+      return sendJSON(res, 200, { status: 'cleared' });
     }
 
     if (pathname === '/api/health') {
@@ -599,8 +555,7 @@ function startServer(port, retriesLeft = 10) {
         console.log(`🔄 Tự động thử cổng kế tiếp: http://localhost:${nextPort} ...`);
         startServer(nextPort, retriesLeft - 1);
       } else {
-        console.error(`❌ Không tìm thấy cổng khả dụng sau nhiều lần thử.`);
-        console.log(`💡 Mẹo: Giải phóng cổng ${INITIAL_PORT} bằng lệnh: kill -9 $(lsof -ti :${INITIAL_PORT})`);
+        console.error(`❌ Không tìm thấy cổng khả dụng.`);
         process.exit(1);
       }
     } else {
@@ -611,9 +566,10 @@ function startServer(port, retriesLeft = 10) {
 
   server.listen(port, () => {
     console.log(`====================================================`);
-    console.log(`🚀 Fish Audio TTS Studio is running!`);
+    console.log(`🚀 Fish Audio TTS Studio (Enhanced) is running!`);
     console.log(`📍 URL: http://localhost:${port}`);
-    console.log(`🔑 Preloaded API Key: ${DEFAULT_API_KEY.slice(0, 12)}...${DEFAULT_API_KEY.slice(-4)}`);
+    console.log(`⚡ Keep-Alive Pool: Enabled (Max 32 Sockets)`);
+    console.log(`💾 LRU Memory Cache: Enabled (150MB Limit)`);
     console.log(`====================================================`);
   });
 

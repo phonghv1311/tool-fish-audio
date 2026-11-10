@@ -130,6 +130,24 @@
           >Xin chào! Chào mừng bạn đến với Fish Audio. Hãy thử tạo giọng đọc tự nhiên và cảm xúc nhất ngay hôm nay!</textarea>
         </div>
 
+        <!-- Tiêu đề / Tên bài viết (Dùng để đặt tên file Audio & SRT) -->
+        <div class="pt-1">
+          <div class="flex items-center justify-between text-xs text-slate-300 mb-1.5">
+            <label for="docTitleInput" class="flex items-center space-x-1.5 font-medium">
+              <i data-lucide="tag" class="w-3.5 h-3.5 text-cyan-400"></i>
+              <span>Tiêu đề / Tên bài viết:</span>
+            </label>
+            <span class="text-[11px] text-slate-500 font-normal">Tự động đặt tên file Audio (.wav) & Phụ đề (.srt)</span>
+          </div>
+          <input
+            type="text"
+            id="docTitleInput"
+            class="w-full bg-dark-900 border border-dark-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition"
+            placeholder="Ví dụ: Audio_Gioi_Thieu_Dau_Tien, Truyen_Dem_Tap_1..."
+            value="Bai_Viet_Fish_Audio"
+          />
+        </div>
+
         <div class="flex items-center justify-between text-xs text-slate-400">
           <div class="flex items-center space-x-2">
             <i data-lucide="info" class="w-3.5 h-3.5 text-slate-500"></i>
@@ -146,8 +164,8 @@
       <div class="bg-dark-850 rounded-2xl border border-dark-700/80 p-5 shadow-xl flex flex-col space-y-4">
         <div class="flex items-center justify-between">
           <div class="flex items-center space-x-2">
-            <i data-lucide="mic" class="w-4 h-4 text-indigo-400"></i>
-            <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-300">Chọn giọng đọc (Voice Model)</h2>
+            <i data-lucide="heart" class="w-4 h-4 text-rose-400 fill-rose-400/20"></i>
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-300">Giọng đọc yêu thích / Hay dùng</h2>
           </div>
           <button type="button" id="btnOpenExploreModal" class="text-xs px-3 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center space-x-1.5 transition font-medium">
             <i data-lucide="compass" class="w-3.5 h-3.5"></i>
@@ -155,79 +173,9 @@
           </button>
         </div>
 
-        <!-- Curated Preset Voices Grid -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5" id="presetVoicesContainer">
-          <!-- Voice option: Default -->
-          <label class="voice-card relative flex items-center p-3 rounded-xl border border-dark-700 bg-dark-900/60 hover:bg-dark-800 cursor-pointer transition">
-            <input type="radio" name="voiceSelect" value="" checked class="sr-only">
-            <div class="w-9 h-9 rounded-lg bg-slate-700 flex items-center justify-center mr-3 text-slate-300 shrink-0 voice-icon">
-              <i data-lucide="bot" class="w-5 h-5"></i>
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center space-x-1.5">
-                <span class="text-sm font-medium text-slate-200">Mặc định AI (Default)</span>
-                <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700">Gốc</span>
-              </div>
-              <p class="text-xs text-slate-400 truncate">Giọng đọc tiêu chuẩn không kèm tham chiếu</p>
-            </div>
-            <div class="check-mark hidden w-4 h-4 text-brand-400 ml-2">
-              <i data-lucide="check-circle-2" class="w-4 h-4"></i>
-            </div>
-          </label>
-
-          <!-- Voice option: Lanh Cao -->
-          <label class="voice-card relative flex items-center p-3 rounded-xl border border-dark-700 bg-dark-900/60 hover:bg-dark-800 cursor-pointer transition">
-            <input type="radio" name="voiceSelect" value="66467d32ee2f42a89281e019630309ed" class="sr-only">
-            <div class="w-9 h-9 rounded-lg bg-emerald-900/40 border border-emerald-500/30 flex items-center justify-center mr-3 text-emerald-400 shrink-0 voice-icon">
-              <i data-lucide="user-check" class="w-5 h-5"></i>
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center space-x-1.5">
-                <span class="text-sm font-medium text-slate-200">Lanh Cao</span>
-                <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">🇻🇳 Nam Ấm</span>
-              </div>
-              <p class="text-xs text-slate-400 truncate">Giọng nam trầm ấm, truyền cảm, chuyên nghiệp</p>
-            </div>
-            <div class="check-mark hidden w-4 h-4 text-brand-400 ml-2">
-              <i data-lucide="check-circle-2" class="w-4 h-4"></i>
-            </div>
-          </label>
-
-          <!-- Voice option: Nữ Dịu Dàng -->
-          <label class="voice-card relative flex items-center p-3 rounded-xl border border-dark-700 bg-dark-900/60 hover:bg-dark-800 cursor-pointer transition">
-            <input type="radio" name="voiceSelect" value="9ac6a11757ed4662aff7cb64bc33e868" class="sr-only">
-            <div class="w-9 h-9 rounded-lg bg-pink-900/40 border border-pink-500/30 flex items-center justify-center mr-3 text-pink-400 shrink-0 voice-icon">
-              <i data-lucide="sparkles" class="w-5 h-5"></i>
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center space-x-1.5">
-                <span class="text-sm font-medium text-slate-200">Nữ Dịu Dàng</span>
-                <span class="text-[10px] px-1.5 py-0.2 rounded bg-pink-500/10 text-pink-400 border border-pink-500/30">🇻🇳 Nữ Trẻ</span>
-              </div>
-              <p class="text-xs text-slate-400 truncate">Giọng nữ ngọt ngào, truyền cảm xúc, tự nhiên</p>
-            </div>
-            <div class="check-mark hidden w-4 h-4 text-brand-400 ml-2">
-              <i data-lucide="check-circle-2" class="w-4 h-4"></i>
-            </div>
-          </label>
-
-          <!-- Voice option: Smash Bros Announcer -->
-          <label class="voice-card relative flex items-center p-3 rounded-xl border border-dark-700 bg-dark-900/60 hover:bg-dark-800 cursor-pointer transition">
-            <input type="radio" name="voiceSelect" value="90e65eaaf50e4470b8e6d43ee6afd7d5" class="sr-only">
-            <div class="w-9 h-9 rounded-lg bg-amber-900/40 border border-amber-500/30 flex items-center justify-center mr-3 text-amber-400 shrink-0 voice-icon">
-              <i data-lucide="flame" class="w-5 h-5"></i>
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center space-x-1.5">
-                <span class="text-sm font-medium text-slate-200">Smash Announcer</span>
-                <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">🇺🇸 Game Hào Hùng</span>
-              </div>
-              <p class="text-xs text-slate-400 truncate">Giọng bình luận viên game sôi động, mạnh mẽ</p>
-            </div>
-            <div class="check-mark hidden w-4 h-4 text-brand-400 ml-2">
-              <i data-lucide="check-circle-2" class="w-4 h-4"></i>
-            </div>
-          </label>
+        <!-- Curated Favorite Voices Grid (Dynamic) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5" id="favoriteVoicesContainer">
+          <!-- Rendered dynamically by renderFavoriteVoices() -->
         </div>
 
         <!-- Custom Reference ID Input -->
@@ -348,6 +296,22 @@
               </select>
             </div>
 
+            <!-- Concurrency Threads (5, 10, 15, 20) -->
+            <div>
+              <div class="flex items-center justify-between text-xs mb-1">
+                <label class="font-medium text-slate-300">Số luồng song song</label>
+                <span class="text-[10px] text-amber-400 font-mono">10-20 luồng</span>
+              </div>
+              <select id="concurrencySelect" class="w-full bg-dark-900 border border-dark-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                <option value="5">5 luồng (Nhẹ, an toàn)</option>
+                <option value="10" selected>10 luồng (Khuyên dùng - Cân bằng tốc độ & Rate Limit)</option>
+                <option value="15">15 luồng (Nhanh hơn - Tối ưu)</option>
+                <option value="20">20 luồng (Tốc độ tối đa - Cần API hạn mức cao)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <!-- Text Normalization -->
             <div>
               <label class="block text-xs font-medium text-slate-300 mb-1">Chuẩn hóa số & từ viết tắt</label>
@@ -356,13 +320,11 @@
                 <span class="text-xs text-slate-300">Normalize (Khuyên bật)</span>
               </label>
             </div>
-          </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <!-- Temperature -->
             <div>
               <div class="flex items-center justify-between text-xs mb-1">
-                <label class="text-slate-300">Temperature (Độ ngẫu nhiên)</label>
+                <label class="text-slate-300">Temperature</label>
                 <span id="tempVal" class="font-mono text-cyan-400">0.7</span>
               </div>
               <input type="range" id="tempInput" min="0.1" max="1.0" step="0.05" value="0.7" class="w-full accent-cyan-500 bg-dark-700 h-1.5 rounded-lg cursor-pointer">
@@ -379,25 +341,16 @@
           </div>
         </div>
 
-        <!-- GENERATE BUTTONS -->
-        <div class="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          <button
-            type="button"
-            id="btnGenerate"
-            class="py-3.5 px-4 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 active:scale-[0.99] font-semibold text-white shadow-lg shadow-brand-600/20 flex items-center justify-center space-x-2 transition disabled:opacity-50 disabled:cursor-not-allowed text-sm cursor-pointer"
-          >
-            <i data-lucide="play" id="btnGenIcon" class="w-4 h-4 fill-white"></i>
-            <span id="btnGenText">Tạo âm thanh nhanh</span>
-            <span class="text-[11px] font-normal text-white/70 hidden lg:inline">(Ctrl+Enter)</span>
-          </button>
-
+        <!-- SINGLE GENERATE ACTION: XUẤT FULL BÀI + PHỤ ĐỀ SRT -->
+        <div class="pt-2">
           <button
             type="button"
             id="btnGenerateFullSrt"
-            class="py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:via-teal-500 hover:to-cyan-500 active:scale-[0.99] font-semibold text-white shadow-lg shadow-emerald-600/20 flex items-center justify-center space-x-2 transition disabled:opacity-50 disabled:cursor-not-allowed text-sm cursor-pointer"
+            class="w-full py-4 px-6 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:via-teal-500 hover:to-cyan-500 active:scale-[0.99] font-bold text-white shadow-xl shadow-emerald-600/25 flex items-center justify-center space-x-2.5 transition disabled:opacity-50 disabled:cursor-not-allowed text-base cursor-pointer tracking-wide"
           >
-            <i data-lucide="zap" id="btnSrtIcon" class="w-4 h-4 text-amber-300"></i>
-            <span id="btnSrtText">Xuất Full Bài + SRT (10 Luồng)</span>
+            <i data-lucide="zap" id="btnSrtIcon" class="w-5 h-5 text-amber-300"></i>
+            <span id="btnSrtText">Xuất Full Bài + Phụ đề SRT (10 Luồng)</span>
+            <span class="text-xs font-normal text-white/70 hidden sm:inline">(Ctrl+Enter)</span>
           </button>
         </div>
       </div>
@@ -656,9 +609,8 @@
     const mp3Bitrate = document.getElementById('mp3Bitrate');
     const latencyMode = document.getElementById('latencyMode');
     const normalizeCheck = document.getElementById('normalizeCheck');
-    const btnGenerate = document.getElementById('btnGenerate');
-    const btnGenText = document.getElementById('btnGenText');
-    const btnGenIcon = document.getElementById('btnGenIcon');
+    const docTitleInput = document.getElementById('docTitleInput');
+    const concurrencySelect = document.getElementById('concurrencySelect');
     const btnGenerateFullSrt = document.getElementById('btnGenerateFullSrt');
     const btnSrtText = document.getElementById('btnSrtText');
     const btnSrtIcon = document.getElementById('btnSrtIcon');
@@ -688,13 +640,227 @@
       welcome_en: "Hello! Welcome to Fish Audio. Transform your text into expressive, studio-quality speech in seconds."
     };
 
+    // ==========================================
+    // QUẢN LÝ GIỌNG ĐỌC YÊU THÍCH (LOCALSTORAGE)
+    // ==========================================
+    const DEFAULT_FAVORITES = [
+      {
+        id: '',
+        title: 'Mặc định AI (Default)',
+        badge: 'Gốc',
+        badgeClass: 'bg-slate-800 text-slate-400 border-slate-700',
+        icon: 'bot',
+        iconClass: 'bg-slate-700 text-slate-300',
+        description: 'Giọng đọc tiêu chuẩn không kèm tham chiếu'
+      },
+      {
+        id: '66467d32ee2f42a89281e019630309ed',
+        title: 'Lanh Cao',
+        badge: '🇻🇳 Nam Ấm',
+        badgeClass: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+        icon: 'user-check',
+        iconClass: 'bg-emerald-900/40 border border-emerald-500/30 text-emerald-400',
+        description: 'Giọng nam trầm ấm, truyền cảm, chuyên nghiệp'
+      },
+      {
+        id: '9ac6a11757ed4662aff7cb64bc33e868',
+        title: 'Nữ Dịu Dàng',
+        badge: '🇻🇳 Nữ Trẻ',
+        badgeClass: 'bg-pink-500/10 text-pink-400 border-pink-500/30',
+        icon: 'sparkles',
+        iconClass: 'bg-pink-900/40 border border-pink-500/30 text-pink-400',
+        description: 'Giọng nữ ngọt ngào, truyền cảm xúc, tự nhiên'
+      },
+      {
+        id: '90e65eaaf50e4470b8e6d43ee6afd7d5',
+        title: 'Smash Announcer',
+        badge: '🇺🇸 Game Hào Hùng',
+        badgeClass: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+        icon: 'flame',
+        iconClass: 'bg-amber-900/40 border border-amber-500/30 text-amber-400',
+        description: 'Giọng bình luận viên game sôi động, mạnh mẽ'
+      }
+    ];
+
+    function getFavoriteVoices() {
+      try {
+        const raw = localStorage.getItem('fish_favorite_voices');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {
+        console.warn('Lỗi đọc favorites:', e);
+      }
+      return [...DEFAULT_FAVORITES];
+    }
+
+    function saveFavoriteVoices(list) {
+      try {
+        localStorage.setItem('fish_favorite_voices', JSON.stringify(list));
+      } catch (e) {
+        console.warn('Lỗi lưu favorites:', e);
+      }
+    }
+
+    function isFavoriteVoice(voiceId) {
+      const list = getFavoriteVoices();
+      const idToMatch = voiceId || '';
+      return list.some(item => (item.id || '') === idToMatch);
+    }
+
+    function renderFavoriteVoices() {
+      const container = document.getElementById('favoriteVoicesContainer');
+      if (!container) return;
+
+      const favorites = getFavoriteVoices();
+      const selectedId = customRefId.value.trim();
+
+      if (!favorites.length) {
+        container.innerHTML = `
+          <div class="col-span-full py-6 px-4 rounded-xl border border-dashed border-dark-700 bg-dark-900/30 text-center space-y-2">
+            <p class="text-xs text-slate-400">Chưa có giọng yêu thích nào.</p>
+            <p class="text-[11px] text-slate-500">Mở <span class="text-indigo-400 font-medium">"Khám phá thư viện"</span> và bấm icon <span class="text-rose-400">❤️</span> để lưu các giọng hay dùng vào đây!</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = favorites.map(fav => {
+        const isSelected = (selectedId === '' && fav.id === '') || (selectedId !== '' && selectedId === fav.id);
+        const borderClass = isSelected ? 'border-brand-500 bg-dark-800 ring-1 ring-brand-500/30' : 'border-dark-700 bg-dark-900/60 hover:bg-dark-800';
+        const checkHidden = isSelected ? '' : 'hidden';
+        const iconName = fav.icon || 'mic';
+        const iconClass = fav.iconClass || 'bg-slate-800 text-brand-400 border border-brand-500/30';
+        const badgeClass = fav.badgeClass || 'bg-slate-800 text-slate-400 border border-slate-700';
+
+        return `
+          <div class="voice-card group relative flex items-center p-3 rounded-xl border ${borderClass} cursor-pointer transition select-none" onclick="selectFavoriteVoice('${fav.id || ''}')">
+            <input type="radio" name="voiceSelect" value="${fav.id || ''}" ${isSelected ? 'checked' : ''} class="sr-only">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center mr-3 shrink-0 voice-icon ${iconClass}">
+              <i data-lucide="${iconName}" class="w-4 h-4"></i>
+            </div>
+            <div class="flex-1 min-w-0 pr-1">
+              <div class="flex items-center space-x-1.5">
+                <span class="text-xs font-semibold text-slate-200 truncate">${escapeHtml(fav.title)}</span>
+                ${fav.badge ? `<span class="text-[10px] px-1.5 py-0.2 rounded border font-medium shrink-0 ${badgeClass}">${escapeHtml(fav.badge)}</span>` : ''}
+              </div>
+              <p class="text-[11px] text-slate-400 truncate mt-0.5">${escapeHtml(fav.description || '')}</p>
+            </div>
+            <div class="flex items-center space-x-1.5 shrink-0 ml-1">
+              ${fav.id !== '' ? `
+                <button type="button" onclick="event.stopPropagation(); removeFavoriteVoice('${fav.id}')" title="Xoá khỏi danh sách yêu thích" class="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 rounded-md hover:bg-dark-700 transition">
+                  <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                </button>
+              ` : ''}
+              <div class="check-mark ${checkHidden} w-4 h-4 text-brand-400">
+                <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    function selectFavoriteVoice(voiceId) {
+      customRefId.value = voiceId;
+      renderFavoriteVoices();
+    }
+
+    function removeFavoriteVoice(voiceId) {
+      let list = getFavoriteVoices().filter(v => (v.id || '') !== voiceId);
+      saveFavoriteVoices(list);
+      if (customRefId.value.trim() === voiceId) {
+        customRefId.value = '';
+      }
+      renderFavoriteVoices();
+      showToast('Đã xoá giọng khỏi mục yêu thích', 'info');
+    }
+
+    function toggleFavoriteVoice(voiceObj) {
+      const list = getFavoriteVoices();
+      const voiceId = voiceObj.id !== undefined ? voiceObj.id : (voiceObj._id || '');
+      const index = list.findIndex(v => (v.id || '') === voiceId);
+
+      if (index !== -1) {
+        if (voiceId === '') {
+          showToast('Không thể xoá giọng AI mặc định!', 'info');
+          return;
+        }
+        list.splice(index, 1);
+        saveFavoriteVoices(list);
+        showToast(`Đã bỏ yêu thích giọng "${voiceObj.title}"`, 'info');
+      } else {
+        const langStr = voiceObj.languages && voiceObj.languages[0] ? voiceObj.languages[0].toUpperCase() : 'AI';
+        const newFav = {
+          id: voiceId,
+          title: voiceObj.title || 'Giọng nói mới',
+          badge: langStr + ((voiceObj._naturalScore && voiceObj._naturalScore >= 25) ? ' 🎙️' : ''),
+          badgeClass: 'bg-rose-500/10 text-rose-400 border border-rose-500/30',
+          icon: 'heart',
+          iconClass: 'bg-rose-900/40 border border-rose-500/30 text-rose-400',
+          description: voiceObj.description || 'Giọng đọc được yêu thích từ thư viện',
+          sampleAudio: (voiceObj.samples && voiceObj.samples[0] && voiceObj.samples[0].audio) || ''
+        };
+        list.push(newFav);
+        saveFavoriteVoices(list);
+        showToast(`Đã lưu "${voiceObj.title}" vào mục yêu thích! ❤️`, 'success');
+      }
+
+      renderFavoriteVoices();
+
+      // Cập nhật ngay icon trái tim trong Modal
+      document.querySelectorAll(`[data-fav-id="${voiceId}"]`).forEach(btn => {
+        const isFav = isFavoriteVoice(voiceId);
+        btn.className = `btn-fav p-1.5 rounded-lg border transition ${isFav ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 hover:bg-rose-500/30' : 'bg-dark-800 text-slate-400 border-dark-700 hover:text-rose-400 hover:border-rose-500/40'}`;
+        btn.title = isFav ? 'Bỏ yêu thích' : 'Lưu vào mục yêu thích';
+        btn.innerHTML = `<i data-lucide="heart" class="w-3.5 h-3.5 ${isFav ? 'fill-rose-500 text-rose-400' : ''}"></i>`;
+      });
+      lucide.createIcons();
+    }
+
+    function toggleFavoriteFromModal(vId) {
+      const v = (window.currentExploreVoices || []).find(x => x._id === vId);
+      if (v) {
+        toggleFavoriteVoice(v);
+      } else {
+        toggleFavoriteVoice({ id: vId, _id: vId, title: 'Giọng #' + vId.slice(0, 6) });
+      }
+    }
+
+    function getSafeFileName() {
+      const raw = (docTitleInput ? docTitleInput.value : '').trim();
+      if (!raw) return `fish_audio_${Date.now()}`;
+      let clean = raw.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_');
+      clean = clean.replace(/_+/g, '_').replace(/^_|_$/g, '');
+      return clean || `fish_audio_${Date.now()}`;
+    }
+
+    function getConcurrency() {
+      if (concurrencySelect) {
+        return Math.min(Math.max(parseInt(concurrencySelect.value, 10) || 10, 1), 25);
+      }
+      return 10;
+    }
+
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
       lucide.createIcons();
       updateCharCount();
       updateApiKeyDisplay();
+      renderFavoriteVoices();
       renderHistory();
       initWaveformVisualizer();
+
+      // Update button text with initial concurrency
+      if (concurrencySelect) {
+        btnSrtText.textContent = `Xuất Full Bài + Phụ đề SRT (${concurrencySelect.value} Luồng)`;
+        concurrencySelect.addEventListener('change', () => {
+          btnSrtText.textContent = `Xuất Full Bài + Phụ đề SRT (${concurrencySelect.value} Luồng)`;
+        });
+      }
 
       // Sliders listeners
       speedInput.addEventListener('input', () => speedVal.textContent = `${speedInput.value}x`);
@@ -721,43 +887,20 @@
         });
       });
 
-      // Voice preset cards listeners
-      document.querySelectorAll('.voice-card').forEach(card => {
-        card.addEventListener('click', () => {
-          document.querySelectorAll('.voice-card').forEach(c => {
-            c.classList.remove('border-brand-500', 'bg-dark-800');
-            c.querySelector('.check-mark').classList.add('hidden');
-          });
-          card.classList.add('border-brand-500', 'bg-dark-800');
-          card.querySelector('.check-mark').classList.remove('hidden');
-          const radio = card.querySelector('input[type="radio"]');
-          radio.checked = true;
-          // Clear custom input if a preset is clicked
-          customRefId.value = '';
-        });
-      });
-
-      // Custom Ref ID input clears radio selection visual
+      // Custom Ref ID input re-evaluates favorite cards visual
       customRefId.addEventListener('input', () => {
-        if (customRefId.value.trim()) {
-          document.querySelectorAll('.voice-card').forEach(c => {
-            c.classList.remove('border-brand-500', 'bg-dark-800');
-            c.querySelector('.check-mark').classList.add('hidden');
-            c.querySelector('input[type="radio"]').checked = false;
-          });
-        }
+        renderFavoriteVoices();
       });
 
-      // Keyboard shortcut Ctrl+Enter or Cmd+Enter to generate
+      // Keyboard shortcut Ctrl+Enter or Cmd+Enter to generate full audio + SRT
       document.addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
           e.preventDefault();
-          generateAudio();
+          generateFullWithSrt();
         }
       });
 
-      // Setup Generate buttons
-      btnGenerate.addEventListener('click', generateAudio);
+      // Setup Generate button
       btnGenerateFullSrt.addEventListener('click', generateFullWithSrt);
 
       // Setup Modals
@@ -816,99 +959,9 @@
       }
     }
 
-    // MAIN TTS GENERATION CALL (Đoạn đơn)
-    async function generateAudio() {
-      stopActivePreview();
-      const text = textInput.value.trim();
-      if (!text) {
-        showToast('Vui lòng nhập văn bản cần tạo âm thanh!', 'error');
-        textInput.focus();
-        return;
-      }
 
-      let refId = customRefId.value.trim();
-      if (!refId) {
-        const checkedRadio = document.querySelector('input[name="voiceSelect"]:checked');
-        if (checkedRadio) refId = checkedRadio.value;
-      }
 
-      const payload = {
-        text: text,
-        apiKey: state.apiKey,
-        model: modelSelect.value,
-        format: state.selectedFormat,
-        mp3_bitrate: mp3Bitrate.value,
-        prosody: {
-          speed: parseFloat(speedInput.value),
-          volume: parseInt(volumeInput.value, 10)
-        },
-        latency: latencyMode.value,
-        normalize: normalizeCheck.checked,
-        temperature: parseFloat(tempInput.value),
-        top_p: parseFloat(topPInput.value)
-      };
-
-      if (refId) payload.reference_id = refId;
-
-      btnGenerate.disabled = true;
-      btnGenText.textContent = 'Đang tổng hợp...';
-      btnGenIcon.setAttribute('data-lucide', 'loader-2');
-      btnGenIcon.classList.add('animate-spin');
-      lucide.createIcons();
-      audioStatusBadge.textContent = 'Đang xử lý...';
-      audioStatusBadge.className = 'text-[11px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20';
-
-      const startTime = performance.now();
-
-      try {
-        const response = await fetch('/api/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error || `Lỗi máy chủ (${response.status})`);
-        }
-
-        const blob = await response.blob();
-        const durationSec = parseFloat(((performance.now() - startTime) / 1000).toFixed(2));
-        const audioUrl = URL.createObjectURL(blob);
-
-        // Tạo phụ đề SRT đồng bộ tự động
-        const srtContent = generateSrtFromSingleText(text, durationSec);
-
-        setAudioResult({
-          url: audioUrl,
-          blob: blob,
-          text: text,
-          format: payload.format,
-          model: payload.model,
-          refId: refId || 'Mặc định',
-          durationSec: `${durationSec}s`,
-          durationNum: durationSec,
-          size: formatBytes(blob.size),
-          srt: srtContent,
-          createdAt: new Date().toLocaleTimeString()
-        });
-
-        showToast('Tạo giọng nói thành công!', 'success');
-      } catch (err) {
-        console.error('TTS error:', err);
-        showToast(err.message || 'Không thể tạo giọng nói. Vui lòng thử lại!', 'error');
-        audioStatusBadge.textContent = 'Lỗi tạo';
-        audioStatusBadge.className = 'text-[11px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20';
-      } finally {
-        btnGenerate.disabled = false;
-        btnGenText.textContent = 'Tạo âm thanh nhanh';
-        btnGenIcon.setAttribute('data-lucide', 'play');
-        btnGenIcon.classList.remove('animate-spin');
-        lucide.createIcons();
-      }
-    }
-
-    // GENERATE FULL BÀI VÀ XUẤT PHỤ ĐỀ SRT
+    // GENERATE FULL BÀI VÀ XUẤT PHỤ ĐỀ SRT (ACTION DUY NHẤT)
     async function generateFullWithSrt() {
       stopActivePreview();
       const text = textInput.value.trim();
@@ -924,13 +977,14 @@
         if (checkedRadio) refId = checkedRadio.value;
       }
 
+      const concurrency = getConcurrency();
       const payload = {
         text: text,
         apiKey: state.apiKey,
         model: modelSelect.value,
         format: state.selectedFormat, // Mặc định WAV hoặc MP3
         chunkSize: 220,
-        concurrency: 10, // 10 luồng song song
+        concurrency: concurrency, // Cấu hình đa luồng (10-20 luồng)
         prosody: {
           speed: parseFloat(speedInput.value),
           volume: parseInt(volumeInput.value, 10)
@@ -940,11 +994,11 @@
       if (refId) payload.reference_id = refId;
 
       btnGenerateFullSrt.disabled = true;
-      btnSrtText.textContent = 'Đang xử lý Full bài...';
+      btnSrtText.textContent = `Đang xử lý ${concurrency} luồng song song...`;
       btnSrtIcon.setAttribute('data-lucide', 'loader-2');
       btnSrtIcon.classList.add('animate-spin');
       lucide.createIcons();
-      audioStatusBadge.textContent = 'Đang tạo Full bài...';
+      audioStatusBadge.textContent = 'Đang xử lý đa luồng...';
       audioStatusBadge.className = 'text-[11px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20';
 
       try {
@@ -985,7 +1039,7 @@
           createdAt: new Date().toLocaleTimeString()
         });
 
-        showToast(`Tạo Full bài thành công! (${data.chunksCount} câu)`, 'success');
+        showToast(`Tạo Full bài thành công! (${data.chunksCount} câu, ${concurrency} luồng)`, 'success');
       } catch (err) {
         console.error('Batch error:', err);
         showToast(err.message || 'Lỗi khi tạo Full bài', 'error');
@@ -993,12 +1047,15 @@
         audioStatusBadge.className = 'text-[11px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20';
       } finally {
         btnGenerateFullSrt.disabled = false;
-        btnSrtText.textContent = 'Xuất Full Bài + SRT (.wav)';
-        btnSrtIcon.setAttribute('data-lucide', 'subtitles');
+        btnSrtText.textContent = `Xuất Full Bài + Phụ đề SRT (${concurrency} Luồng)`;
+        btnSrtIcon.setAttribute('data-lucide', 'zap');
         btnSrtIcon.classList.remove('animate-spin');
         lucide.createIcons();
       }
     }
+
+    // Alias để tránh lỗi nếu có lệnh gọi cũ
+    const generateAudio = generateFullWithSrt;
 
     function generateSrtFromSingleText(text, totalDuration) {
       const sentences = text.match(/[^.!?…;]+[.!?…;]+|[^.!?…;]+$/g) || [text];
@@ -1058,15 +1115,15 @@
         srtChunkCount.textContent = '0 câu';
       }
 
-      // Setup audio download
+      // Setup audio download với tên file theo tiêu đề bài viết
       btnDownloadAudio.onclick = () => {
         const a = document.createElement('a');
         a.href = item.url;
-        a.download = `fish_audio_${Date.now()}.${item.format}`;
+        a.download = `${getSafeFileName()}.${item.format}`;
         a.click();
       };
 
-      // Setup SRT download
+      // Setup SRT download với tên file theo tiêu đề bài viết
       btnDownloadSrt.onclick = () => {
         if (!state.currentSrt) {
           showToast('Chưa có nội dung phụ đề!', 'error');
@@ -1075,9 +1132,9 @@
         const srtBlob = new Blob([state.currentSrt], { type: 'text/plain;charset=utf-8' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(srtBlob);
-        a.download = `subtitle_${Date.now()}.srt`;
+        a.download = `${getSafeFileName()}.srt`;
         a.click();
-        showToast('Đã tải file phụ đề SRT!', 'success');
+        showToast(`Đã tải file phụ đề ${getSafeFileName()}.srt!`, 'success');
       };
 
       saveToHistory(item);
@@ -1087,6 +1144,8 @@
       // Store in memory & localStorage (text metadata only)
       const histItem = {
         id: Date.now(),
+        title: (docTitleInput ? docTitleInput.value : '').trim() || 'Bài viết chưa đặt tên',
+        safeFileName: getSafeFileName(),
         text: item.text,
         model: item.model,
         format: item.format,
@@ -1114,7 +1173,11 @@
         div.className = 'p-3 bg-dark-900/80 hover:bg-dark-800 rounded-xl border border-dark-700/60 transition flex items-center justify-between space-x-3 text-xs';
         div.innerHTML = `
           <div class="flex-1 min-w-0">
-            <p class="text-slate-200 font-medium truncate">${escapeHtml(item.text)}</p>
+            <div class="flex items-center space-x-1.5 mb-0.5">
+              <i data-lucide="tag" class="w-3 h-3 text-cyan-400 shrink-0"></i>
+              <span class="text-xs font-semibold text-cyan-300 truncate">${escapeHtml(item.title || 'Bài viết')}</span>
+            </div>
+            <p class="text-slate-300 text-[11px] truncate">${escapeHtml(item.text)}</p>
             <div class="flex items-center space-x-2 text-[10px] text-slate-400 mt-1">
               <span class="text-brand-400">${item.model}</span>
               <span>•</span>
@@ -1127,7 +1190,7 @@
             <button type="button" onclick="replayHistory('${item.url}')" class="p-1.5 rounded-lg bg-dark-700 hover:bg-brand-600 text-slate-300 hover:text-white transition" title="Nghe lại">
               <i data-lucide="play" class="w-3.5 h-3.5"></i>
             </button>
-            <button type="button" onclick="downloadHistory('${item.url}', '${item.format}')" class="p-1.5 rounded-lg bg-dark-700 hover:bg-emerald-600 text-slate-300 hover:text-white transition" title="Tải về">
+            <button type="button" onclick="downloadHistory('${item.url}', '${item.format}', '${escapeJs(item.safeFileName || '')}')" class="p-1.5 rounded-lg bg-dark-700 hover:bg-emerald-600 text-slate-300 hover:text-white transition" title="Tải về file âm thanh">
               <i data-lucide="download" class="w-3.5 h-3.5"></i>
             </button>
           </div>
@@ -1136,6 +1199,13 @@
       });
 
       lucide.createIcons();
+    }
+
+    function downloadHistory(url, format, safeName) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${safeName || 'fish_audio_' + Date.now()}.${format || 'wav'}`;
+      a.click();
     }
 
     function replayHistory(url) {
@@ -1353,6 +1423,7 @@
         if (!res.ok) throw new Error('Không thể tải danh sách giọng');
         const data = await res.json();
         let items = data.items || [];
+        window.currentExploreVoices = items;
 
         // Gán điểm tự nhiên cho mỗi giọng
         items.forEach(v => {
@@ -1411,6 +1482,7 @@
     }
 
     function renderVoiceCard(v) {
+      const isFav = isFavoriteVoice(v._id);
       const sampleAudio = v.samples && v.samples[0] && v.samples[0].audio ? v.samples[0].audio : '';
       const tags = (v.tags || []).slice(0, 3).map(t => `<span class="px-1.5 py-0.5 rounded bg-dark-700 text-slate-400 text-[10px]">${escapeHtml(t)}</span>`).join('');
       const author = v.author ? v.author.nickname : 'Cộng đồng';
@@ -1461,19 +1533,30 @@
           </div>
 
           <div class="pt-2 border-t border-dark-800 flex items-center justify-between">
-            <div class="text-[10px] text-slate-500 truncate max-w-[120px]">
+            <div class="text-[10px] text-slate-500 truncate max-w-[100px]">
               Tác giả: ${escapeHtml(author)}
             </div>
-            <div class="flex items-center space-x-2">
+            <div class="flex items-center space-x-1.5">
+              <!-- Nút Yêu thích (Icon trái tim) -->
+              <button
+                type="button"
+                data-fav-id="${v._id}"
+                onclick="toggleFavoriteFromModal('${v._id}')"
+                class="btn-fav p-1.5 rounded-lg border transition ${isFav ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 hover:bg-rose-500/30' : 'bg-dark-800 text-slate-400 border-dark-700 hover:text-rose-400 hover:border-rose-500/40'}"
+                title="${isFav ? 'Bỏ yêu thích' : 'Lưu vào mục yêu thích'}"
+              >
+                <i data-lucide="heart" class="w-3.5 h-3.5 ${isFav ? 'fill-rose-500 text-rose-400' : ''}"></i>
+              </button>
+
               ${sampleAudio ? `
-                <button type="button" onclick="toggleVoiceSample(this, '${sampleAudio}')" class="btn-sample-play px-2.5 py-1 rounded-lg bg-dark-800 hover:bg-dark-700 text-slate-300 text-xs flex items-center space-x-1.5 transition border border-dark-700 hover:border-slate-500">
+                <button type="button" onclick="toggleVoiceSample(this, '${sampleAudio}')" class="btn-sample-play px-2.5 py-1 rounded-lg bg-dark-800 hover:bg-dark-700 text-slate-300 text-xs flex items-center space-x-1 transition border border-dark-700 hover:border-slate-500">
                   <i data-lucide="play" class="w-3 h-3"></i>
                   <span>Nghe thử</span>
                 </button>
               ` : ''}
-              <button type="button" onclick="selectVoiceFromModal('${v._id}', '${escapeJs(v.title)}')" class="px-3 py-1 rounded-lg bg-brand-600 hover:bg-brand-500 text-white font-medium text-xs transition flex items-center space-x-1">
+              <button type="button" onclick="selectVoiceFromModal('${v._id}', '${escapeJs(v.title)}')" class="px-2.5 py-1 rounded-lg bg-brand-600 hover:bg-brand-500 text-white font-medium text-xs transition flex items-center space-x-1">
                 <i data-lucide="check" class="w-3 h-3"></i>
-                <span>Chọn giọng</span>
+                <span>Chọn</span>
               </button>
             </div>
           </div>
@@ -1564,15 +1647,8 @@
     function selectVoiceFromModal(voiceId, voiceTitle) {
       stopActivePreview();
       customRefId.value = voiceId;
+      renderFavoriteVoices();
       exploreModal.classList.add('hidden');
-
-      // Uncheck all preset cards visually
-      document.querySelectorAll('.voice-card').forEach(c => {
-        c.classList.remove('border-brand-500', 'bg-dark-800');
-        c.querySelector('.check-mark').classList.add('hidden');
-        c.querySelector('input[type="radio"]').checked = false;
-      });
-
       showToast(`Đã chọn giọng: ${voiceTitle}`, 'success');
     }
 

@@ -1,16 +1,21 @@
 #!/usr/bin/env node
 /**
  * Fish Audio Batch Synthesizer - Xử lý song song 10 luồng (Concurrency: 10)
- * Tăng tốc độ tạo giọng nói gấp 8-10 lần, bảo toàn tuyệt đối thứ tự âm thanh và mốc thời gian SRT.
- * 
- * Usage:
- *   node batch_synthesize.js --file story.txt --format wav --concurrency 10
- *   node batch_synthesize.js --text "Nội dung rất dài..." --concurrency 10
+ * Tích hợp Keep-Alive Agent Connection Pool, LRU Cache & Zero-Copy Audio Assembly.
  */
 
-const https = require('https');
 const fs = require('fs');
 const path = require('path');
+
+const { fetchTtsChunk } = require('./lib/network');
+const { globalAudioCache } = require('./lib/cache');
+const {
+  splitTextIntoSentences,
+  createWavHeader,
+  extractPcmFromWav,
+  formatSrtTime,
+  fastPcmConcat
+} = require('./lib/audio');
 
 const DEFAULT_API_KEY = process.env.FISH_API_KEY || 'sk-fish-XCsvD6WOqXziDuBmyCXUD-lDIujXF9aB2-dIysL4IyY';
 
@@ -27,7 +32,7 @@ function parseArgs() {
     speed: 1.0,
     volume: 0,
     chunkSize: 220,
-    concurrency: 10, // Mặc định 10 luồng song song theo yêu cầu
+    concurrency: 10,
     maxRetries: 3,
     apiKey: DEFAULT_API_KEY
   };
@@ -64,7 +69,7 @@ function parseArgs() {
 
 function printHelp() {
   console.log(`
-⚡ Fish Audio Batch Synthesizer - Xử lý song song đa luồng (Multi-Threaded)
+⚡ Fish Audio Batch Synthesizer - Multi-Threaded & Keep-Alive Optimized
 
 Cách sử dụng:
   node batch_synthesize.js [options]
@@ -87,171 +92,7 @@ Các tùy chọn:
 }
 
 /**
- * Tách văn bản thành các câu tự nhiên
- */
-function splitTextIntoSentences(text, maxChunkLen = 220) {
-  const paragraphs = text.split(/\n+/);
-  const chunks = [];
-
-  for (const para of paragraphs) {
-    const trimmed = para.trim();
-    if (!trimmed) continue;
-
-    const rawSentences = trimmed.match(/[^.!?…;]+[.!?…;]+|[^.!?…;]+$/g) || [trimmed];
-    let current = '';
-
-    for (const raw of rawSentences) {
-      const sentence = raw.trim();
-      if (!sentence) continue;
-
-      if ((current + ' ' + sentence).trim().length <= maxChunkLen) {
-        current = (current + ' ' + sentence).trim();
-      } else {
-        if (current) chunks.push(current);
-        if (sentence.length > maxChunkLen) {
-          const parts = sentence.match(new RegExp(`.{1,${maxChunkLen}}(\\s+|$)|.{1,${maxChunkLen}}`, 'g')) || [sentence];
-          for (const p of parts) {
-            if (p.trim()) chunks.push(p.trim());
-          }
-          current = '';
-        } else {
-          current = sentence;
-        }
-      }
-    }
-    if (current) chunks.push(current);
-  }
-  return chunks;
-}
-
-/**
- * Tạo Header WAV chuẩn 44-byte cho khối PCM
- */
-function createWavHeader(dataLength, sampleRate = 44100, numChannels = 1, bitsPerSample = 16) {
-  const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
-  const blockAlign = numChannels * (bitsPerSample / 8);
-  const buffer = Buffer.alloc(44);
-
-  buffer.write('RIFF', 0);
-  buffer.writeUInt32LE(36 + dataLength, 4);
-  buffer.write('WAVE', 8);
-  buffer.write('fmt ', 12);
-  buffer.writeUInt32LE(16, 16);
-  buffer.writeUInt16LE(1, 20); // PCM
-  buffer.writeUInt16LE(numChannels, 22);
-  buffer.writeUInt32LE(sampleRate, 24);
-  buffer.writeUInt32LE(byteRate, 28);
-  buffer.writeUInt16LE(blockAlign, 32);
-  buffer.writeUInt16LE(bitsPerSample, 34);
-  buffer.write('data', 36);
-  buffer.writeUInt32LE(dataLength, 40);
-
-  return buffer;
-}
-
-/**
- * Trích xuất raw PCM và tính thời lượng thực tế
- */
-function extractPcmFromWav(wavBuffer) {
-  let dataIndex = wavBuffer.indexOf(Buffer.from('data'));
-  let sampleRate = 44100;
-  let numChannels = 1;
-  let bitsPerSample = 16;
-
-  if (wavBuffer.length >= 36) {
-    numChannels = wavBuffer.readUInt16LE(22) || 1;
-    sampleRate = wavBuffer.readUInt32LE(24) || 44100;
-    bitsPerSample = wavBuffer.readUInt16LE(34) || 16;
-  }
-
-  const pcmData = (dataIndex !== -1 && dataIndex + 8 <= wavBuffer.length)
-    ? wavBuffer.slice(dataIndex + 8)
-    : wavBuffer.slice(44);
-
-  const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
-  const durationSec = byteRate > 0 ? pcmData.length / byteRate : 0;
-
-  return { pcmData, sampleRate, numChannels, bitsPerSample, durationSec };
-}
-
-/**
- * Định dạng thời gian chuẩn SRT (HH:MM:SS,mmm)
- */
-function formatSrtTime(totalSeconds) {
-  const pad = (n, width) => String(n).padStart(width, '0');
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = Math.floor(totalSeconds % 60);
-  const milliseconds = Math.floor((totalSeconds % 1) * 1000);
-  return `${pad(hours, 2)}:${pad(minutes, 2)}:${pad(seconds, 2)},${pad(milliseconds, 3)}`;
-}
-
-/**
- * Gọi API Fish Audio tổng hợp 1 chunk kèm cơ chế tự động thử lại (Retry) khi gặp 429 hoặc lỗi mạng
- */
-function fetchTtsChunkWithRetry(text, options, retries = 3) {
-  return new Promise((resolve, reject) => {
-    function attempt(remainingAttempts) {
-      const requestBody = {
-        text: text,
-        format: options.format,
-        latency: 'balanced',
-        prosody: { speed: options.speed, volume: options.volume }
-      };
-      if (options.format === 'mp3') requestBody.mp3_bitrate = 128;
-      if (options.voice) requestBody.reference_id = options.voice;
-
-      const postData = JSON.stringify(requestBody);
-      const apiOptions = {
-        hostname: 'api.fish.audio',
-        port: 443,
-        path: '/v1/tts',
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${options.apiKey}`,
-          'Content-Type': 'application/json',
-          'model': options.model,
-          'Content-Length': Buffer.byteLength(postData)
-        }
-      };
-
-      const req = https.request(apiOptions, res => {
-        const chunks = [];
-        res.on('data', c => chunks.push(c));
-        res.on('end', () => {
-          const fullBuffer = Buffer.concat(chunks);
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            resolve(fullBuffer);
-          } else if ((res.statusCode === 429 || res.statusCode >= 500) && remainingAttempts > 0) {
-            // Rate limit hoặc server bận: Chờ với độ trễ tăng dần rồi thử lại
-            const waitTime = (4 - remainingAttempts) * 1000 + Math.floor(Math.random() * 500);
-            setTimeout(() => attempt(remainingAttempts - 1), waitTime);
-          } else {
-            reject(new Error(`API Error (${res.statusCode}): ${fullBuffer.toString()}`));
-          }
-        });
-      });
-
-      req.on('error', err => {
-        if (remainingAttempts > 0) {
-          setTimeout(() => attempt(remainingAttempts - 1), 1000);
-        } else {
-          reject(err);
-        }
-      });
-
-      req.write(postData);
-      req.end();
-    }
-
-    attempt(retries);
-  });
-}
-
-/**
- * Bộ điều phối luồng song song (Concurrency Worker Pool)
- * Bảo đảm đúng tối đa `concurrency` request chạy cùng lúc,
- * và lưu kết quả đúng chỉ số ban đầu (Preserve original order).
+ * Bộ điều phối song song (Concurrency Worker Pool)
  */
 async function processConcurrently(items, concurrency, workerFn, onProgress) {
   const results = new Array(items.length);
@@ -283,7 +124,7 @@ function renderProgressBar(current, total, concurrency, barLength = 25) {
   const filled = Math.round((barLength * current) / total);
   const empty = barLength - filled;
   const bar = '█'.repeat(filled) + '░'.repeat(empty);
-  process.stdout.write(`\r⚡ [${bar}] ${percent}% (${current}/${total} câu) - Đang chạy song song ${concurrency} luồng`);
+  process.stdout.write(`\r⚡ [${bar}] ${percent}% (${current}/${total} câu) - Đang chạy song song ${concurrency} luồng (Keep-Alive Pool)`);
 }
 
 async function main() {
@@ -302,11 +143,11 @@ async function main() {
     process.exit(1);
   }
 
-  const chunks = splitTextIntoSentences(text, options.chunkSize);
+  const chunks = splitTextIntoSentences(text, options.chunkSize, true);
   const actualThreads = Math.min(options.concurrency, chunks.length);
 
   console.log('====================================================');
-  console.log(`🚀 Fish Audio Multi-Threaded Synthesizer`);
+  console.log(`🚀 Fish Audio Multi-Threaded Synthesizer (Optimized)`);
   console.log(`📝 Tổng ký tự:     ${text.length} ký tự`);
   console.log(`🧩 Số câu/đoạn:     ${chunks.length}`);
   console.log(`⚡ Luồng song song: ${actualThreads} luồng`);
@@ -318,17 +159,31 @@ async function main() {
   const startTime = Date.now();
   renderProgressBar(0, chunks.length, actualThreads);
 
-  // Xử lý song song 10 luồng
+  let cacheHits = 0;
+
+  // Xử lý song song N luồng với Cache & Keep-Alive Agent
   const processedResults = await processConcurrently(
     chunks,
     actualThreads,
     async (chunkText, index) => {
-      const audioBuffer = await fetchTtsChunkWithRetry(chunkText, options, options.maxRetries);
-      return {
-        index,
+      const cacheParams = {
         text: chunkText,
-        buffer: audioBuffer
+        voice: options.voice,
+        model: options.model,
+        format: options.format,
+        speed: options.speed,
+        volume: options.volume
       };
+
+      const cached = globalAudioCache.get(cacheParams);
+      if (cached) {
+        cacheHits++;
+        return { index, text: chunkText, buffer: cached, fromCache: true };
+      }
+
+      const audioBuffer = await fetchTtsChunk(chunkText, options, options.maxRetries);
+      globalAudioCache.set(cacheParams, audioBuffer);
+      return { index, text: chunkText, buffer: audioBuffer, fromCache: false };
     },
     (completed, total) => {
       renderProgressBar(completed, total, actualThreads);
@@ -336,7 +191,7 @@ async function main() {
   );
 
   const totalTimeSec = ((Date.now() - startTime) / 1000).toFixed(2);
-  console.log(`\n\n⏱️  Hoàn tất tải về ${chunks.length} câu trong: ${totalTimeSec}s (Tốc độ: ${(chunks.length / totalTimeSec).toFixed(1)} câu/s)`);
+  console.log(`\n\n⏱️  Hoàn tất ${chunks.length} câu trong: ${totalTimeSec}s (Cache Hits: ${cacheHits}/${chunks.length})`);
   console.log('🔗 Đang ghép nối âm thanh tuần tự và tính toán phụ đề SRT...');
 
   const pcmList = [];
@@ -346,7 +201,6 @@ async function main() {
   let masterChannels = 1;
   let masterBits = 16;
 
-  // Lặp qua danh sách kết quả theo đúng thứ tự 0 -> N-1
   for (let i = 0; i < processedResults.length; i++) {
     const item = processedResults[i];
     let chunkDuration = 0;
@@ -371,16 +225,16 @@ async function main() {
     currentTime = endTime;
   }
 
-  // 1. Ghi file audio full bài
+  // Ghép nối Buffer Zero-Copy
   if (options.format === 'wav') {
-    const totalPcm = Buffer.concat(pcmList);
+    const totalPcm = fastPcmConcat(pcmList);
     const header = createWavHeader(totalPcm.length, masterSampleRate, masterChannels, masterBits);
     fs.writeFileSync(options.out, Buffer.concat([header, totalPcm]));
   } else {
-    fs.writeFileSync(options.out, Buffer.concat(pcmList));
+    fs.writeFileSync(options.out, fastPcmConcat(pcmList));
   }
 
-  // 2. Ghi file phụ đề SRT
+  // Ghi file phụ đề SRT
   fs.writeFileSync(options.srt, srtEntries.join('\n'), 'utf8');
 
   const audioStats = fs.statSync(options.out);
