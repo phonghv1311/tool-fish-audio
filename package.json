@@ -1,0 +1,13 @@
+{
+  "name": "fish-audio-web",
+  "version": "1.0.0",
+  "description": "Fish Audio Text-to-Speech Web Application",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": ["fish-audio", "tts", "text-to-speech", "ai-voice"],
+  "author": "",
+  "license": "MIT"
+}
+
