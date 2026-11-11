@@ -28,6 +28,8 @@ demo_sub.*
 test_out.*
 test_sample.*
 *.mp4
+public/outputs/*
+!public/outputs/.gitkeep
 
 # Logs
 *.log

@@ -8,7 +8,6 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
-const url = require('url');
 
 const { getKeepAliveAgent, fetchTtsChunk } = require('./lib/network');
 const { globalAudioCache } = require('./lib/cache');
@@ -22,7 +21,39 @@ const {
 
 const INITIAL_PORT = parseInt(process.env.PORT || '3000', 10);
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const OUTPUTS_DIR = path.join(PUBLIC_DIR, 'outputs');
 const DEFAULT_API_KEY = process.env.FISH_API_KEY || 'sk-fish-XCsvD6WOqXziDuBmyCXUD-lDIujXF9aB2-dIysL4IyY';
+
+// Đảm bảo thư mục lưu trữ file xuất âm thanh luôn sẵn sàng
+if (!fs.existsSync(OUTPUTS_DIR)) {
+  fs.mkdirSync(OUTPUTS_DIR, { recursive: true });
+}
+
+/**
+ * Tự động dọn dẹp các file âm thanh tạm cũ hơn 24 giờ để giải phóng dung lượng ổ đĩa
+ */
+function cleanOldOutputs(maxAgeMs = 24 * 60 * 60 * 1000) {
+  try {
+    if (!fs.existsSync(OUTPUTS_DIR)) return;
+    const now = Date.now();
+    const files = fs.readdirSync(OUTPUTS_DIR);
+    for (const f of files) {
+      if (f === '.gitkeep') continue;
+      const fullPath = path.join(OUTPUTS_DIR, f);
+      try {
+        const stat = fs.statSync(fullPath);
+        if (now - stat.mtimeMs > maxAgeMs) {
+          fs.unlinkSync(fullPath);
+        }
+      } catch (e) {}
+    }
+  } catch (err) {
+    console.warn('Cảnh báo khi dọn dẹp outputs cũ:', err.message);
+  }
+}
+
+// Chạy dọn dẹp khi khởi động
+cleanOldOutputs();
 
 // MIME types for static files
 const MIME_TYPES = {
@@ -191,10 +222,10 @@ function handleBatchTTS(req, res) {
     const voice = payload.reference_id ? payload.reference_id.trim() : '';
     const speed = payload.prosody && typeof payload.prosody.speed === 'number' ? payload.prosody.speed : 1.0;
     const volume = payload.prosody && typeof payload.prosody.volume === 'number' ? payload.prosody.volume : 0;
-    const chunkSize = payload.chunkSize || 220;
-    const concurrency = Math.min(Math.max(parseInt(payload.concurrency || '10', 10), 1), 25);
+    const chunkSize = payload.chunkSize || 350;
+    const concurrency = Math.min(Math.max(parseInt(payload.concurrency || '10', 10), 1), 50);
 
-    const chunks = splitTextIntoSentences(text, chunkSize, true);
+    const chunks = splitTextIntoSentences(text, chunkSize, false);
     if (!chunks.length) {
       return sendJSON(res, 400, { error: 'Không có câu hợp lệ để tạo giọng nói.' });
     }
@@ -217,7 +248,7 @@ function handleBatchTTS(req, res) {
 
           const audioBuffer = await fetchTtsChunk(chunkText, {
             format, apiKey, model, voice, speed, volume
-          }, 3);
+          }, 5);
 
           globalAudioCache.set(cacheParams, audioBuffer);
           return { index, text: chunkText, buffer: audioBuffer, fromCache: false };
@@ -267,6 +298,21 @@ function handleBatchTTS(req, res) {
 
       const srtText = srtEntries.join('\n');
 
+      // Lưu file âm thanh và phụ đề trực tiếp ra đĩa cứng tại public/outputs
+      const fileId = `tts_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      const audioFileName = `${fileId}.${format}`;
+      const srtFileName = `${fileId}.srt`;
+      const audioFilePath = path.join(OUTPUTS_DIR, audioFileName);
+      const srtFilePath = path.join(OUTPUTS_DIR, srtFileName);
+
+      await fs.promises.writeFile(audioFilePath, finalAudioBuffer);
+      await fs.promises.writeFile(srtFilePath, srtText, 'utf8');
+
+      // V8 string limit safe: Chỉ tạo base64 nếu file nhỏ (<= 10MB) để tránh crash ERR_STRING_TOO_LONG
+      const safeAudioBase64 = finalAudioBuffer.length <= 10 * 1024 * 1024
+        ? finalAudioBuffer.toString('base64')
+        : null;
+
       sendJSON(res, 200, {
         success: true,
         format: format,
@@ -275,7 +321,10 @@ function handleBatchTTS(req, res) {
         chunksCount: chunks.length,
         concurrency: concurrency,
         cacheHitsCount: cacheHitsCount,
-        audioBase64: finalAudioBuffer.toString('base64'),
+        fileSize: finalAudioBuffer.length,
+        audioUrl: `/outputs/${audioFileName}`,
+        srtUrl: `/outputs/${srtFileName}`,
+        audioBase64: safeAudioBase64,
         srt: srtText
       });
     } catch (err) {
@@ -311,10 +360,10 @@ function handleBatchStream(req, res) {
     const voice = payload.reference_id ? payload.reference_id.trim() : '';
     const speed = payload.prosody && typeof payload.prosody.speed === 'number' ? payload.prosody.speed : 1.0;
     const volume = payload.prosody && typeof payload.prosody.volume === 'number' ? payload.prosody.volume : 0;
-    const chunkSize = payload.chunkSize || 220;
-    const concurrency = Math.min(Math.max(parseInt(payload.concurrency || '10', 10), 1), 25);
+    const chunkSize = payload.chunkSize || 350;
+    const concurrency = Math.min(Math.max(parseInt(payload.concurrency || '10', 10), 1), 50);
 
-    const chunks = splitTextIntoSentences(text, chunkSize, true);
+    const chunks = splitTextIntoSentences(text, chunkSize, false);
 
     // Kích hoạt Chunked NDJSON stream
     res.writeHead(200, {
@@ -338,7 +387,7 @@ function handleBatchStream(req, res) {
 
         if (!buffer) {
           fromCache = false;
-          buffer = await fetchTtsChunk(chunkText, { format, apiKey, model, voice, speed, volume }, 3);
+          buffer = await fetchTtsChunk(chunkText, { format, apiKey, model, voice, speed, volume }, 5);
           globalAudioCache.set(cacheParams, buffer);
         }
 
@@ -389,14 +438,31 @@ function handleBatchStream(req, res) {
         finalAudioBuffer = fastPcmConcat(pcmList);
       }
 
+      const fileId = `tts_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      const audioFileName = `${fileId}.${format}`;
+      const srtFileName = `${fileId}.srt`;
+      const audioFilePath = path.join(OUTPUTS_DIR, audioFileName);
+      const srtFilePath = path.join(OUTPUTS_DIR, srtFileName);
+      const srtContent = srtEntries.join('\n');
+
+      await fs.promises.writeFile(audioFilePath, finalAudioBuffer);
+      await fs.promises.writeFile(srtFilePath, srtContent, 'utf8');
+
+      const safeAudioBase64 = finalAudioBuffer.length <= 10 * 1024 * 1024
+        ? finalAudioBuffer.toString('base64')
+        : null;
+
       const completeEvent = {
         type: 'complete',
         format: format,
         duration: currentTime,
         formattedDuration: formatSrtTime(currentTime),
         chunksCount: chunks.length,
-        srt: srtEntries.join('\n'),
-        fullAudioBase64: finalAudioBuffer.toString('base64'),
+        fileSize: finalAudioBuffer.length,
+        audioUrl: `/outputs/${audioFileName}`,
+        srtUrl: `/outputs/${srtFileName}`,
+        srt: srtContent,
+        fullAudioBase64: safeAudioBase64,
         cacheStats: globalAudioCache.getStats()
       };
       res.write(JSON.stringify(completeEvent) + '\n');
@@ -456,7 +522,7 @@ function handleModels(req, res, queryParams) {
 }
 
 /**
- * Serve static files safely
+ * Serve static files safely & Stream large audio with HTTP Range (206 Partial Content)
  */
 function serveStatic(req, res, pathname) {
   let safePath = pathname === '/' ? '/index.html' : pathname;
@@ -483,20 +549,51 @@ function serveStatic(req, res, pathname) {
 
     const ext = path.extname(resolvedPath).toLowerCase();
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    const range = req.headers.range;
 
-    res.writeHead(200, { 'Content-Type': contentType });
-    const stream = fs.createReadStream(resolvedPath);
-    stream.pipe(res);
+    // Hỗ trợ HTTP Range Request cho phép trình duyệt tua âm thanh lớn mượt mà
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : stats.size - 1;
+
+      if (isNaN(start) || start >= stats.size || end >= stats.size || start > end) {
+        res.writeHead(416, { 'Content-Range': `bytes */${stats.size}` });
+        return res.end();
+      }
+
+      const chunkSize = (end - start) + 1;
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${stats.size}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': contentType,
+        'Access-Control-Allow-Origin': '*'
+      });
+      const stream = fs.createReadStream(resolvedPath, { start, end });
+      stream.pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': stats.size,
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*'
+      });
+      const stream = fs.createReadStream(resolvedPath);
+      stream.pipe(res);
+    }
   });
 }
 
 /**
- * Start server with auto-port retry
+ * Start server with auto-port retry & WHATWG URL compliance
  */
 function startServer(port, retriesLeft = 10) {
   const server = http.createServer((req, res) => {
-    const parsedUrl = url.parse(req.url, true);
-    const pathname = parsedUrl.pathname;
+    // Sử dụng chuẩn WHATWG URL thay vì url.parse() deprecated
+    const reqUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const pathname = reqUrl.pathname;
+    const queryParams = Object.fromEntries(reqUrl.searchParams.entries());
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
@@ -522,7 +619,7 @@ function startServer(port, retriesLeft = 10) {
     }
 
     if (pathname === '/api/models' && req.method === 'GET') {
-      return handleModels(req, res, parsedUrl.query);
+      return handleModels(req, res, queryParams);
     }
 
     if (pathname === '/api/cache-stats' && req.method === 'GET') {
@@ -568,8 +665,9 @@ function startServer(port, retriesLeft = 10) {
     console.log(`====================================================`);
     console.log(`🚀 Fish Audio TTS Studio (Enhanced) is running!`);
     console.log(`📍 URL: http://localhost:${port}`);
-    console.log(`⚡ Keep-Alive Pool: Enabled (Max 32 Sockets)`);
+    console.log(`⚡ Keep-Alive Pool: Enabled (Max 128 Sockets)`);
     console.log(`💾 LRU Memory Cache: Enabled (150MB Limit)`);
+    console.log(`📂 Outputs Storage: ${OUTPUTS_DIR}`);
     console.log(`====================================================`);
   });
 

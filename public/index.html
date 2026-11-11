@@ -296,22 +296,6 @@
               </select>
             </div>
 
-            <!-- Concurrency Threads (5, 10, 15, 20) -->
-            <div>
-              <div class="flex items-center justify-between text-xs mb-1">
-                <label class="font-medium text-slate-300">Số luồng song song</label>
-                <span class="text-[10px] text-amber-400 font-mono">10-20 luồng</span>
-              </div>
-              <select id="concurrencySelect" class="w-full bg-dark-900 border border-dark-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                <option value="5">5 luồng (Nhẹ, an toàn)</option>
-                <option value="10" selected>10 luồng (Khuyên dùng - Cân bằng tốc độ & Rate Limit)</option>
-                <option value="15">15 luồng (Nhanh hơn - Tối ưu)</option>
-                <option value="20">20 luồng (Tốc độ tối đa - Cần API hạn mức cao)</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <!-- Text Normalization -->
             <div>
               <label class="block text-xs font-medium text-slate-300 mb-1">Chuẩn hóa số & từ viết tắt</label>
@@ -320,7 +304,40 @@
                 <span class="text-xs text-slate-300">Normalize (Khuyên bật)</span>
               </label>
             </div>
+          </div>
 
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <!-- Concurrency Threads (5, 10, 15, 20, 30, 40) -->
+            <div>
+              <div class="flex items-center justify-between text-xs mb-1">
+                <label class="font-medium text-slate-300">Số luồng song song</label>
+                <span class="text-[10px] text-amber-400 font-mono">10 - 40 luồng</span>
+              </div>
+              <select id="concurrencySelect" class="w-full bg-dark-900 border border-dark-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                <option value="5">5 luồng (Nhẹ, an toàn)</option>
+                <option value="10">10 luồng (Cân bằng - Hạn chế Rate Limit)</option>
+                <option value="15">15 luồng (Nhanh - Ổn định)</option>
+                <option value="20" selected>20 luồng (Tốc độ cao - Khuyên dùng)</option>
+                <option value="30">30 luồng (Cực nhanh - Văn bản dài)</option>
+                <option value="40">40 luồng (Tốc độ tối đa - Cần mạng mạnh)</option>
+              </select>
+            </div>
+
+            <!-- Chunk Size Select -->
+            <div>
+              <div class="flex items-center justify-between text-xs mb-1">
+                <label class="font-medium text-slate-300">Độ dài cắt câu (Chunk Size)</label>
+                <span class="text-[10px] text-cyan-400 font-mono">Tối ưu bài 95k+ chữ</span>
+              </div>
+              <select id="chunkSizeSelect" class="w-full bg-dark-900 border border-dark-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-cyan-500">
+                <option value="220">220 ký tự (Phụ đề ngắn, cắt theo câu)</option>
+                <option value="350" selected>350 ký tự (Khuyên dùng - Đọc tự nhiên, giảm 40% request)</option>
+                <option value="500">500 ký tự (Tốc độ tối đa - Ít request nhất cho bài dài)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <!-- Temperature -->
             <div>
               <div class="flex items-center justify-between text-xs mb-1">
@@ -611,6 +628,7 @@
     const normalizeCheck = document.getElementById('normalizeCheck');
     const docTitleInput = document.getElementById('docTitleInput');
     const concurrencySelect = document.getElementById('concurrencySelect');
+    const chunkSizeSelect = document.getElementById('chunkSizeSelect');
     const btnGenerateFullSrt = document.getElementById('btnGenerateFullSrt');
     const btnSrtText = document.getElementById('btnSrtText');
     const btnSrtIcon = document.getElementById('btnSrtIcon');
@@ -842,9 +860,16 @@
 
     function getConcurrency() {
       if (concurrencySelect) {
-        return Math.min(Math.max(parseInt(concurrencySelect.value, 10) || 10, 1), 25);
+        return Math.min(Math.max(parseInt(concurrencySelect.value, 10) || 10, 1), 40);
       }
-      return 10;
+      return 20;
+    }
+
+    function getChunkSize() {
+      if (chunkSizeSelect) {
+        return parseInt(chunkSizeSelect.value, 10) || 350;
+      }
+      return 350;
     }
 
     // ==========================================
@@ -887,7 +912,8 @@
           topP: topPInput ? topPInput.value : '0.7',
           mp3Bitrate: mp3Bitrate ? mp3Bitrate.value : '128',
           latency: latencyMode ? latencyMode.value : 'balanced',
-          concurrency: concurrencySelect ? concurrencySelect.value : '10',
+          concurrency: concurrencySelect ? concurrencySelect.value : '20',
+          chunkSize: chunkSizeSelect ? chunkSizeSelect.value : '350',
           normalize: normalizeCheck ? normalizeCheck.checked : true,
           advOpen: adv ? !adv.classList.contains('hidden') : false
         };
@@ -939,6 +965,9 @@
         }
         if (s.latency && latencyMode) {
           latencyMode.value = s.latency;
+        }
+        if (s.chunkSize && chunkSizeSelect) {
+          chunkSizeSelect.value = s.chunkSize;
         }
         if (s.concurrency && concurrencySelect) {
           concurrencySelect.value = s.concurrency;
@@ -1008,7 +1037,9 @@
             size: item.size,
             srt: item.srt,
             chunksCount: item.chunksCount,
-            audioBlob: item.blob
+            audioUrl: item.audioUrl || item.url,
+            srtUrl: item.srtUrl || null,
+            audioBlob: (item.blob && item.blob.size < 25 * 1024 * 1024) ? item.blob : null
           });
           tx.oncomplete = () => resolve();
           tx.onerror = (e) => reject(e.target.error);
@@ -1073,7 +1104,7 @@
         const items = await dbGetAllHistory();
         if (items && items.length > 0) {
           state.history = items.map(it => {
-            let url = '';
+            let url = it.audioUrl || '';
             if (it.audioBlob) {
               try {
                 url = URL.createObjectURL(it.audioBlob);
@@ -1084,7 +1115,9 @@
             return {
               ...it,
               blob: it.audioBlob,
-              url: url
+              url: url,
+              audioUrl: it.audioUrl || url,
+              srtUrl: it.srtUrl || null
             };
           });
 
@@ -1154,6 +1187,9 @@
           btnSrtText.textContent = `Xuất Full Bài + Phụ đề SRT (${concurrencySelect.value} Luồng)`;
           saveSettings();
         });
+      }
+      if (chunkSizeSelect) {
+        chunkSizeSelect.addEventListener('change', saveSettings);
       }
 
       // Format radio buttons
@@ -1261,13 +1297,14 @@
       }
 
       const concurrency = getConcurrency();
+      const chunkSize = getChunkSize();
       const payload = {
         text: text,
         apiKey: state.apiKey,
         model: modelSelect.value,
         format: state.selectedFormat, // Mặc định WAV hoặc MP3
-        chunkSize: 220,
-        concurrency: concurrency, // Cấu hình đa luồng (10-20 luồng)
+        chunkSize: chunkSize,
+        concurrency: concurrency, // Cấu hình đa luồng (10-40 luồng)
         prosody: {
           speed: parseFloat(speedInput.value),
           volume: parseInt(volumeInput.value, 10)
@@ -1277,7 +1314,7 @@
       if (refId) payload.reference_id = refId;
 
       btnGenerateFullSrt.disabled = true;
-      btnSrtText.textContent = `Đang xử lý ${concurrency} luồng song song...`;
+      btnSrtText.textContent = `Đang xử lý ${concurrency} luồng song song (Chunk ${chunkSize})...`;
       btnSrtIcon.setAttribute('data-lucide', 'loader-2');
       btnSrtIcon.classList.add('animate-spin');
       lucide.createIcons();
@@ -1297,19 +1334,32 @@
         }
 
         const data = await response.json();
-        const binaryAudio = atob(data.audioBase64);
-        const bytes = new Uint8Array(binaryAudio.length);
-        for (let i = 0; i < binaryAudio.length; i++) {
-          bytes[i] = binaryAudio.charCodeAt(i);
+        let audioUrl = data.audioUrl;
+        let blob = null;
+
+        // Nếu có audioBase64 (file nhỏ) và chưa có URL
+        if (!audioUrl && data.audioBase64) {
+          try {
+            const binaryAudio = atob(data.audioBase64);
+            const bytes = new Uint8Array(binaryAudio.length);
+            for (let i = 0; i < binaryAudio.length; i++) {
+              bytes[i] = binaryAudio.charCodeAt(i);
+            }
+            const mime = data.format === 'wav' ? 'audio/wav' : 'audio/mpeg';
+            blob = new Blob([bytes], { type: mime });
+            audioUrl = URL.createObjectURL(blob);
+          } catch (e) {
+            console.warn('Lỗi decode base64:', e);
+          }
         }
 
-        const mime = data.format === 'wav' ? 'audio/wav' : 'audio/mpeg';
-        const blob = new Blob([bytes], { type: mime });
-        const audioUrl = URL.createObjectURL(blob);
+        const sizeStr = data.fileSize ? formatBytes(data.fileSize) : (blob ? formatBytes(blob.size) : '--');
 
         const itemData = {
           id: Date.now(),
           url: audioUrl,
+          audioUrl: data.audioUrl || audioUrl,
+          srtUrl: data.srtUrl || null,
           blob: blob,
           text: text,
           format: data.format,
@@ -1317,7 +1367,7 @@
           refId: refId || 'Mặc định',
           durationSec: `${data.duration.toFixed(2)}s (${data.formattedDuration})`,
           durationNum: data.duration,
-          size: formatBytes(blob.size),
+          size: sizeStr,
           srt: data.srt,
           chunksCount: data.chunksCount,
           createdAt: new Date().toLocaleTimeString(),
@@ -1328,7 +1378,7 @@
         setAudioResult(itemData, true, true);
         saveSettings();
 
-        showToast(`Tạo Full bài thành công! (${data.chunksCount} câu, ${concurrency} luồng)`, 'success');
+        showToast(`Tạo Full bài thành công! (${data.chunksCount} đoạn, ${concurrency} luồng)`, 'success');
       } catch (err) {
         console.error('Batch error:', err);
         showToast(err.message || 'Lỗi khi tạo Full bài', 'error');
@@ -1414,22 +1464,29 @@
       // Setup audio download với tên file theo tiêu đề bài viết
       btnDownloadAudio.onclick = () => {
         const a = document.createElement('a');
-        a.href = item.url;
+        a.href = item.audioUrl || item.url;
         a.download = `${item.safeFileName || getSafeFileName()}.${item.format || 'wav'}`;
         a.click();
       };
 
       // Setup SRT download với tên file theo tiêu đề bài viết
       btnDownloadSrt.onclick = () => {
-        if (!state.currentSrt) {
+        if (!state.currentSrt && !item.srtUrl) {
           showToast('Chưa có nội dung phụ đề!', 'error');
           return;
         }
-        const srtBlob = new Blob([state.currentSrt], { type: 'text/plain;charset=utf-8' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(srtBlob);
-        a.download = `${item.safeFileName || getSafeFileName()}.srt`;
-        a.click();
+        if (item.srtUrl) {
+          const a = document.createElement('a');
+          a.href = item.srtUrl;
+          a.download = `${item.safeFileName || getSafeFileName()}.srt`;
+          a.click();
+        } else {
+          const srtBlob = new Blob([state.currentSrt], { type: 'text/plain;charset=utf-8' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(srtBlob);
+          a.download = `${item.safeFileName || getSafeFileName()}.srt`;
+          a.click();
+        }
         showToast(`Đã tải file phụ đề ${item.safeFileName || getSafeFileName()}.srt!`, 'success');
       };
 
@@ -1453,8 +1510,10 @@
         size: item.size,
         srt: item.srt,
         chunksCount: item.chunksCount,
-        blob: item.blob,
-        url: item.url
+        audioUrl: item.audioUrl || item.url,
+        srtUrl: item.srtUrl || null,
+        blob: (item.blob && item.blob.size < 25 * 1024 * 1024) ? item.blob : null,
+        url: item.url || item.audioUrl
       };
 
       state.history.unshift(histItem);
