@@ -9,14 +9,17 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const { getKeepAliveAgent, fetchTtsChunk } = require('./lib/network');
+const { getKeepAliveAgent, ApiKeyPool, fetchTtsChunk } = require('./lib/network');
 const { globalAudioCache } = require('./lib/cache');
+const { globalTaskManager } = require('./lib/task-manager');
 const {
   splitTextIntoSentences,
   createWavHeader,
   extractPcmFromWav,
   formatSrtTime,
-  fastPcmConcat
+  fastPcmConcat,
+  streamMergePcmToWav,
+  streamMergeMp3Files
 } = require('./lib/audio');
 
 const INITIAL_PORT = parseInt(process.env.PORT || '3000', 10);
@@ -38,15 +41,17 @@ function cleanOldOutputs(maxAgeMs = 24 * 60 * 60 * 1000) {
     const now = Date.now();
     const files = fs.readdirSync(OUTPUTS_DIR);
     for (const f of files) {
-      if (f === '.gitkeep') continue;
+      if (f === '.gitkeep' || f === 'tasks') continue;
       const fullPath = path.join(OUTPUTS_DIR, f);
       try {
         const stat = fs.statSync(fullPath);
-        if (now - stat.mtimeMs > maxAgeMs) {
+        if (!stat.isDirectory() && (now - stat.mtimeMs > maxAgeMs)) {
           fs.unlinkSync(fullPath);
         }
       } catch (e) {}
     }
+    // Dọn dẹp các thư mục tác vụ cũ
+    globalTaskManager.cleanOldTasks(maxAgeMs).catch(() => {});
   } catch (err) {
     console.warn('Cảnh báo khi dọn dẹp outputs cũ:', err.message);
   }
@@ -522,6 +527,107 @@ function handleModels(req, res, queryParams) {
 }
 
 /**
+ * Handle Task creation (Large scale long-form audio > 2 hours)
+ */
+function handleCreateTask(req, res) {
+  let body = '';
+  const MAX_SIZE = 50 * 1024 * 1024; // 50MB text limit
+
+  req.on('data', chunk => {
+    body += chunk;
+    if (body.length > MAX_SIZE) {
+      sendJSON(res, 413, { error: 'Payload quá lớn (Tối đa 50MB)' });
+      req.destroy();
+    }
+  });
+
+  req.on('end', async () => {
+    try {
+      const payload = JSON.parse(body || '{}');
+      if (!payload.text || !payload.text.trim()) {
+        return sendJSON(res, 400, { error: 'Vui lòng cung cấp nội dung văn bản (text).' });
+      }
+      const taskResult = await globalTaskManager.createTask(payload);
+      sendJSON(res, 200, { success: true, ...taskResult });
+    } catch (err) {
+      console.error('Lỗi khởi tạo Task:', err);
+      sendJSON(res, 500, { error: 'Lỗi khởi tạo Task âm thanh', details: err.message });
+    }
+  });
+}
+
+/**
+ * Handle Task Realtime SSE Stream
+ */
+async function handleTaskStream(req, res, taskId) {
+  const metadata = await globalTaskManager.readMetadata(taskId);
+  if (!metadata) {
+    return sendJSON(res, 404, { error: 'Task không tồn tại' });
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=UTF-8',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'X-Accel-Buffering': 'no'
+  });
+
+  // Gửi trạng thái hiện tại ngay khi kết nối
+  res.write(`data: ${JSON.stringify({ type: 'init', metadata })}\n\n`);
+
+  if (metadata.status === 'completed') {
+    res.write(`data: ${JSON.stringify({ type: 'completed', ...metadata })}\n\n`);
+    return res.end();
+  }
+
+  const unsubscribe = globalTaskManager.subscribe(taskId, event => {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+    if (event.type === 'completed' || event.type === 'cancelled') {
+      setTimeout(() => {
+        try { res.end(); } catch (e) {}
+      }, 500);
+    }
+  });
+
+  req.on('close', () => {
+    unsubscribe();
+  });
+}
+
+/**
+ * Handle Task Control Actions: pause, resume, cancel
+ */
+async function handleTaskAction(req, res, taskId, action) {
+  try {
+    if (action === 'pause') {
+      const result = await globalTaskManager.pauseTask(taskId);
+      return sendJSON(res, 200, result);
+    } else if (action === 'resume') {
+      const result = await globalTaskManager.resumeTask(taskId);
+      return sendJSON(res, 200, result);
+    } else if (action === 'cancel') {
+      const result = await globalTaskManager.cancelTask(taskId);
+      return sendJSON(res, 200, result);
+    }
+    sendJSON(res, 400, { error: 'Hành động không hợp lệ' });
+  } catch (err) {
+    sendJSON(res, 500, { error: err.message });
+  }
+}
+
+/**
+ * Handle Get Task Status
+ */
+async function handleGetTask(req, res, taskId) {
+  const metadata = await globalTaskManager.readMetadata(taskId);
+  if (!metadata) {
+    return sendJSON(res, 404, { error: 'Task không tồn tại' });
+  }
+  sendJSON(res, 200, metadata);
+}
+
+/**
  * Serve static files safely & Stream large audio with HTTP Range (206 Partial Content)
  */
 function serveStatic(req, res, pathname) {
@@ -618,6 +724,33 @@ function startServer(port, retriesLeft = 10) {
       return handleBatchStream(req, res);
     }
 
+    // Task Routes for Large Long-Form Audio (> 2 hours)
+    if (pathname === '/api/tasks' && req.method === 'POST') {
+      return handleCreateTask(req, res);
+    }
+
+    if (pathname.startsWith('/api/tasks/')) {
+      const parts = pathname.replace('/api/tasks/', '').split('/');
+      const taskId = parts[0];
+      const action = parts[1];
+
+      if (action === 'stream' && req.method === 'GET') {
+        return handleTaskStream(req, res, taskId);
+      }
+      if (action === 'pause' && req.method === 'POST') {
+        return handleTaskAction(req, res, taskId, 'pause');
+      }
+      if (action === 'resume' && req.method === 'POST') {
+        return handleTaskAction(req, res, taskId, 'resume');
+      }
+      if (action === 'cancel' && req.method === 'POST') {
+        return handleTaskAction(req, res, taskId, 'cancel');
+      }
+      if (!action && req.method === 'GET') {
+        return handleGetTask(req, res, taskId);
+      }
+    }
+
     if (pathname === '/api/models' && req.method === 'GET') {
       return handleModels(req, res, queryParams);
     }
@@ -629,6 +762,43 @@ function startServer(port, retriesLeft = 10) {
     if (pathname === '/api/cache-clear' && req.method === 'POST') {
       globalAudioCache.clear();
       return sendJSON(res, 200, { status: 'cleared' });
+    }
+
+    if (pathname === '/api/delete-output' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', async () => {
+        try {
+          const { audioUrl, srtUrl, taskId } = JSON.parse(body || '{}');
+          const toDelete = [];
+          if (audioUrl && typeof audioUrl === 'string' && audioUrl.startsWith('/outputs/')) {
+            const fileName = path.basename(audioUrl);
+            toDelete.push(path.join(OUTPUTS_DIR, fileName));
+          }
+          if (srtUrl && typeof srtUrl === 'string' && srtUrl.startsWith('/outputs/')) {
+            const fileName = path.basename(srtUrl);
+            toDelete.push(path.join(OUTPUTS_DIR, fileName));
+          }
+          for (const f of toDelete) {
+            try {
+              if (fs.existsSync(f)) await fs.promises.unlink(f);
+            } catch (e) {}
+          }
+          if (taskId && typeof taskId === 'string') {
+            try {
+              const safeTaskId = path.basename(taskId);
+              const taskDir = globalTaskManager.getTaskDir(safeTaskId);
+              if (fs.existsSync(taskDir)) {
+                await fs.promises.rm(taskDir, { recursive: true, force: true });
+              }
+            } catch (e) {}
+          }
+          sendJSON(res, 200, { success: true });
+        } catch (e) {
+          sendJSON(res, 400, { error: e.message });
+        }
+      });
+      return;
     }
 
     if (pathname === '/api/health') {
@@ -666,7 +836,9 @@ function startServer(port, retriesLeft = 10) {
     console.log(`🚀 Fish Audio TTS Studio (Enhanced) is running!`);
     console.log(`📍 URL: http://localhost:${port}`);
     console.log(`⚡ Keep-Alive Pool: Enabled (Max 128 Sockets)`);
+    console.log(`🔑 Multi-Key Pool & Failover: Enabled`);
     console.log(`💾 LRU Memory Cache: Enabled (150MB Limit)`);
+    console.log(`🎧 Long-Audio Engine (> 2h, Zero-RAM Stream): Ready`);
     console.log(`📂 Outputs Storage: ${OUTPUTS_DIR}`);
     console.log(`====================================================`);
   });

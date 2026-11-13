@@ -307,19 +307,17 @@
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <!-- Concurrency Threads (5, 10, 15, 20, 30, 40) -->
+            <!-- Concurrency Threads (10, 15, 25, 40) -->
             <div>
               <div class="flex items-center justify-between text-xs mb-1">
                 <label class="font-medium text-slate-300">Số luồng song song</label>
                 <span class="text-[10px] text-amber-400 font-mono">10 - 40 luồng</span>
               </div>
               <select id="concurrencySelect" class="w-full bg-dark-900 border border-dark-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                <option value="5">5 luồng (Nhẹ, an toàn)</option>
-                <option value="10">10 luồng (Cân bằng - Hạn chế Rate Limit)</option>
-                <option value="15">15 luồng (Nhanh - Ổn định)</option>
-                <option value="20" selected>20 luồng (Tốc độ cao - Khuyên dùng)</option>
-                <option value="30">30 luồng (Cực nhanh - Văn bản dài)</option>
-                <option value="40">40 luồng (Tốc độ tối đa - Cần mạng mạnh)</option>
+                <option value="10">10 luồng (Cân bằng - 1 Key)</option>
+                <option value="15" selected>15 luồng (Nhanh - 1 Key ổn định)</option>
+                <option value="25">25 luồng (Tốc độ cao - Khuyên dùng 2+ Keys)</option>
+                <option value="40">40 luồng (Tối đa công suất - Multi-Key Pool)</option>
               </select>
             </div>
 
@@ -327,12 +325,12 @@
             <div>
               <div class="flex items-center justify-between text-xs mb-1">
                 <label class="font-medium text-slate-300">Độ dài cắt câu (Chunk Size)</label>
-                <span class="text-[10px] text-cyan-400 font-mono">Tối ưu bài 95k+ chữ</span>
+                <span class="text-[10px] text-cyan-400 font-mono">Tối ưu bài > 2 giờ</span>
               </div>
               <select id="chunkSizeSelect" class="w-full bg-dark-900 border border-dark-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-cyan-500">
-                <option value="220">220 ký tự (Phụ đề ngắn, cắt theo câu)</option>
-                <option value="350" selected>350 ký tự (Khuyên dùng - Đọc tự nhiên, giảm 40% request)</option>
-                <option value="500">500 ký tự (Tốc độ tối đa - Ít request nhất cho bài dài)</option>
+                <option value="250">250 ký tự (Phụ đề ngắn, cắt từng câu)</option>
+                <option value="450" selected>450 ký tự (Khuyên dùng - Chuẩn tự nhiên & Tối đa công suất)</option>
+                <option value="600">600 ký tự (Tốc độ tối đa - Ít request nhất)</option>
               </select>
             </div>
           </div>
@@ -366,7 +364,7 @@
             class="w-full py-4 px-6 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:via-teal-500 hover:to-cyan-500 active:scale-[0.99] font-bold text-white shadow-xl shadow-emerald-600/25 flex items-center justify-center space-x-2.5 transition disabled:opacity-50 disabled:cursor-not-allowed text-base cursor-pointer tracking-wide"
           >
             <i data-lucide="zap" id="btnSrtIcon" class="w-5 h-5 text-amber-300"></i>
-            <span id="btnSrtText">Xuất Full Bài + Phụ đề SRT (10 Luồng)</span>
+            <span id="btnSrtText">Xuất Full Bài (> 2 Giờ) Siêu Tốc (15 Luồng)</span>
             <span class="text-xs font-normal text-white/70 hidden sm:inline">(Ctrl+Enter)</span>
           </button>
         </div>
@@ -384,6 +382,65 @@
             <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-300">Kết quả âm thanh & Phụ đề</h2>
           </div>
           <span id="audioStatusBadge" class="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">Chưa tạo</span>
+        </div>
+
+        <!-- REALTIME TASK PROGRESS CARD (> 2 HOURS ENGINE) -->
+        <div id="taskProgressCard" class="hidden bg-gradient-to-br from-dark-900 to-dark-850 border border-cyan-500/40 rounded-xl p-4 shadow-xl flex flex-col space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="relative flex h-2.5 w-2.5">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500"></span>
+              </span>
+              <span id="taskProgressTitle" class="text-xs font-bold text-slate-200">Đang xuất Voice đa luồng (>2 Giờ)</span>
+            </div>
+            <span id="taskPercentBadge" class="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">0%</span>
+          </div>
+
+          <!-- Progress Bar -->
+          <div class="w-full bg-dark-950 rounded-full h-2.5 overflow-hidden border border-dark-700/80 p-0.5">
+            <div id="taskProgressBar" class="bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 h-full rounded-full transition-all duration-300 w-0"></div>
+          </div>
+
+          <!-- Live Stats Grid (4 items) -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+            <div class="bg-dark-950/80 p-2 rounded-lg border border-dark-700/50">
+              <div class="text-slate-500 text-[10px]">Tiến độ</div>
+              <div id="taskStatChunks" class="font-bold text-slate-200">0 / 0</div>
+            </div>
+            <div class="bg-dark-950/80 p-2 rounded-lg border border-dark-700/50">
+              <div class="text-slate-500 text-[10px]">Tốc độ</div>
+              <div id="taskStatSpeed" class="font-bold text-cyan-400">0 đoạn/s</div>
+            </div>
+            <div class="bg-dark-950/80 p-2 rounded-lg border border-dark-700/50">
+              <div class="text-slate-500 text-[10px]">Thời gian còn</div>
+              <div id="taskStatEta" class="font-bold text-amber-400">--</div>
+            </div>
+            <div class="bg-dark-950/80 p-2 rounded-lg border border-dark-700/50">
+              <div class="text-slate-500 text-[10px]">Multi-Key Pool</div>
+              <div id="taskStatKeys" class="font-bold text-emerald-400">1 Key</div>
+            </div>
+          </div>
+
+          <!-- Current Chunk Preview -->
+          <div class="text-[11px] text-slate-400 truncate bg-dark-950/60 px-2.5 py-1.5 rounded-lg border border-dark-700/40">
+            <span class="text-cyan-400">Đang xử lý:</span> <span id="taskTextPreview" class="italic text-slate-300">Khởi tạo kết nối...</span>
+          </div>
+
+          <!-- Task Action Controls (Pause / Resume / Cancel) -->
+          <div class="flex items-center justify-between pt-1">
+            <span id="taskCheckpointInfo" class="text-[10px] text-slate-500">Checkpoint SSD: Tự động lưu từng đoạn</span>
+            <div class="flex items-center space-x-2">
+              <button type="button" id="btnPauseTask" class="px-2.5 py-1 text-xs rounded-lg bg-dark-800 hover:bg-dark-700 text-slate-300 border border-dark-700 transition flex items-center space-x-1">
+                <i data-lucide="pause" id="pauseIcon" class="w-3 h-3 text-amber-400"></i>
+                <span id="btnPauseText">Tạm dừng</span>
+              </button>
+              <button type="button" id="btnCancelTask" class="px-2.5 py-1 text-xs rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition flex items-center space-x-1">
+                <i data-lucide="square" class="w-3 h-3 text-rose-400"></i>
+                <span>Hủy bỏ</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- Audio Player View -->
@@ -459,6 +516,7 @@
           <div class="flex items-center space-x-2">
             <i data-lucide="history" class="w-4 h-4 text-amber-400"></i>
             <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-300">Lịch sử tạo gần đây</h2>
+            <span id="historyCountBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700/60 font-mono">0/10</span>
           </div>
           <button type="button" onclick="clearHistory()" class="text-xs text-slate-500 hover:text-rose-400 transition">
             Xoá lịch sử
@@ -468,7 +526,7 @@
         <div id="historyList" class="flex-1 overflow-y-auto space-y-2.5 pr-1 max-h-[420px]">
           <!-- History items will be inserted here -->
           <div id="historyEmpty" class="py-10 text-center text-xs text-slate-500">
-            Lịch sử các lần xuất âm thanh và phụ đề sẽ được lưu tự động (kể cả khi refresh hoặc tải lại trang).
+            Lịch sử tối đa 10 lần xuất gần nhất sẽ được lưu tự động (tự động xoá bản cũ khi vượt quá, kể cả khi tải lại trang).
           </div>
         </div>
       </div>
@@ -575,18 +633,22 @@
         Khóa API được dùng để xác thực với Fish Audio API. Khóa mặc định đã được cấu hình sẵn theo yêu cầu của bạn.
       </p>
 
-      <div class="space-y-1">
-        <label for="customApiKeyInput" class="block text-xs font-medium text-slate-300">API Key:</label>
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <label for="customApiKeyInput" class="block text-xs font-medium text-slate-300">Danh sách API Keys (Multi-Key Pool):</label>
+          <span id="activeKeyCountBadge" class="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">1 Key</span>
+        </div>
         <div class="relative">
-          <input
-            type="password"
+          <textarea
             id="customApiKeyInput"
-            value="sk-fish-XCsvD6WOqXziDuBmyCXUD-lDIujXF9aB2-dIysL4IyY"
-            class="w-full bg-dark-900 border border-dark-700 rounded-xl px-4 py-2.5 text-xs text-slate-200 font-mono pr-10 focus:outline-none focus:ring-2 focus:ring-brand-500"
-          >
-          <button type="button" id="toggleApiKeyVisibility" class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200">
-            <i data-lucide="eye" id="eyeIcon" class="w-4 h-4"></i>
-          </button>
+            rows="3"
+            class="w-full bg-dark-900 border border-dark-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 font-mono focus:outline-none focus:ring-2 focus:ring-amber-500 placeholder-slate-600 resize-none leading-relaxed"
+            placeholder="sk-fish-key1&#10;sk-fish-key2 (Nhập 1 hoặc nhiều API Key, mỗi dòng 1 key hoặc cách bởi dấu phẩy)"
+          ></textarea>
+        </div>
+        <div class="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 flex items-start space-x-2">
+          <i data-lucide="zap" class="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5"></i>
+          <span><strong>Mẹo tối đa công suất:</strong> Khi nhập 2 - 5 API Keys, hệ thống sẽ tự động xoay vòng chia tải (Multi-Key Round-Robin), nhân gấp 2 - 5 lần tốc độ và tránh hoàn toàn Rate Limit 429!</span>
         </div>
       </div>
 
@@ -605,8 +667,11 @@
     // App State
     const state = {
       apiKey: localStorage.getItem('fish_api_key') || 'sk-fish-XCsvD6WOqXziDuBmyCXUD-lDIujXF9aB2-dIysL4IyY',
+      apiKeys: localStorage.getItem('fish_api_keys') || localStorage.getItem('fish_api_key') || 'sk-fish-XCsvD6WOqXziDuBmyCXUD-lDIujXF9aB2-dIysL4IyY',
       selectedFormat: 'mp3',
       currentAudioUrl: null,
+      currentTaskId: null,
+      currentSse: null,
       history: []
     };
 
@@ -972,7 +1037,7 @@
         if (s.concurrency && concurrencySelect) {
           concurrencySelect.value = s.concurrency;
           if (btnSrtText) {
-            btnSrtText.textContent = `Xuất Full Bài + Phụ đề SRT (${s.concurrency} Luồng)`;
+            btnSrtText.textContent = `Xuất Full Bài (> 2 Giờ) Siêu Tốc (${s.concurrency} Luồng)`;
           }
         }
         if (s.normalize !== undefined && normalizeCheck) {
@@ -999,6 +1064,26 @@
     const DB_NAME = 'FishAudioStudioDB';
     const DB_VERSION = 1;
     const STORE_NAME = 'exports';
+    const MAX_HISTORY = 10;
+
+    async function deleteServerOutput(item) {
+      if (!item) return;
+      try {
+        if ((item.audioUrl && typeof item.audioUrl === 'string' && item.audioUrl.startsWith('/outputs/')) ||
+            (item.srtUrl && typeof item.srtUrl === 'string' && item.srtUrl.startsWith('/outputs/')) ||
+            item.taskId) {
+          await fetch('/api/delete-output', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              audioUrl: item.audioUrl,
+              srtUrl: item.srtUrl,
+              taskId: item.taskId
+            })
+          });
+        }
+      } catch (e) {}
+    }
 
     function openHistoryDB() {
       return new Promise((resolve, reject) => {
@@ -1103,6 +1188,18 @@
       try {
         const items = await dbGetAllHistory();
         if (items && items.length > 0) {
+          // Tự động dọn dẹp các bản ghi cũ nếu DB có nhiều hơn giới hạn 10 bản
+          if (items.length > MAX_HISTORY) {
+            const excess = items.slice(MAX_HISTORY);
+            for (const oldItem of excess) {
+              if (oldItem && oldItem.id) {
+                dbDeleteHistoryItem(oldItem.id);
+                deleteServerOutput(oldItem);
+              }
+            }
+            items.length = MAX_HISTORY;
+          }
+
           state.history = items.map(it => {
             let url = it.audioUrl || '';
             if (it.audioBlob) {
@@ -1184,7 +1281,7 @@
       }
       if (concurrencySelect) {
         concurrencySelect.addEventListener('change', () => {
-          btnSrtText.textContent = `Xuất Full Bài + Phụ đề SRT (${concurrencySelect.value} Luồng)`;
+          btnSrtText.textContent = `Xuất Full Bài (> 2 Giờ) Siêu Tốc (${concurrencySelect.value} Luồng)`;
           saveSettings();
         });
       }
@@ -1270,17 +1367,28 @@
       saveSettings();
     }
 
+    function parseKeyList(str) {
+      if (!str) return [];
+      return str.split(/[\n,;]+/).map(k => k.trim()).filter(Boolean);
+    }
+
     function updateApiKeyDisplay() {
-      if (state.apiKey) {
-        apiKeyDisplay.textContent = `API Key: ${state.apiKey.slice(0, 10)}...${state.apiKey.slice(-4)}`;
+      const keys = parseKeyList(state.apiKeys || state.apiKey);
+      const count = keys.length;
+      const countBadge = document.getElementById('activeKeyCountBadge');
+      if (countBadge) countBadge.textContent = `${count} Key${count > 1 ? 's' : ''}`;
+
+      if (count > 1) {
+        apiKeyDisplay.textContent = `🔑 ${count} API Keys (Công suất x${count})`;
+      } else if (count === 1) {
+        const k = keys[0];
+        apiKeyDisplay.textContent = `API Key: ${k.slice(0, 10)}...${k.slice(-4)}`;
       } else {
         apiKeyDisplay.textContent = 'Chưa có API Key';
       }
     }
 
-
-
-    // GENERATE FULL BÀI VÀ XUẤT PHỤ ĐỀ SRT (ACTION DUY NHẤT)
+    // GENERATE FULL BÀI VÀ XUẤT PHỤ ĐỀ SRT (> 2 GIỜ ENGINE VỚI REALTIME SSE PROGRESS)
     async function generateFullWithSrt() {
       stopActivePreview();
       const text = textInput.value.trim();
@@ -1298,13 +1406,16 @@
 
       const concurrency = getConcurrency();
       const chunkSize = getChunkSize();
+      const safeTitle = (docTitleInput ? docTitleInput.value : '').trim() || getSafeFileName();
       const payload = {
         text: text,
+        apiKeys: state.apiKeys || state.apiKey,
         apiKey: state.apiKey,
         model: modelSelect.value,
-        format: state.selectedFormat, // Mặc định WAV hoặc MP3
+        format: state.selectedFormat, // Mặc định MP3 hoặc WAV
         chunkSize: chunkSize,
-        concurrency: concurrency, // Cấu hình đa luồng (10-40 luồng)
+        concurrency: concurrency,
+        title: safeTitle,
         prosody: {
           speed: parseFloat(speedInput.value),
           volume: parseInt(volumeInput.value, 10)
@@ -1314,82 +1425,181 @@
       if (refId) payload.reference_id = refId;
 
       btnGenerateFullSrt.disabled = true;
-      btnSrtText.textContent = `Đang xử lý ${concurrency} luồng song song (Chunk ${chunkSize})...`;
+      btnSrtText.textContent = `Đang kết nối Engine siêu tốc...`;
       btnSrtIcon.setAttribute('data-lucide', 'loader-2');
       btnSrtIcon.classList.add('animate-spin');
       lucide.createIcons();
-      audioStatusBadge.textContent = 'Đang xử lý đa luồng...';
+      audioStatusBadge.textContent = 'Đang khởi động Task...';
       audioStatusBadge.className = 'text-[11px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20';
 
+      // Hiển thị thanh tiến độ Task Realtime
+      const taskCard = document.getElementById('taskProgressCard');
+      const progressBar = document.getElementById('taskProgressBar');
+      const percentBadge = document.getElementById('taskPercentBadge');
+      const statChunks = document.getElementById('taskStatChunks');
+      const statSpeed = document.getElementById('taskStatSpeed');
+      const statEta = document.getElementById('taskStatEta');
+      const statKeys = document.getElementById('taskStatKeys');
+      const textPreview = document.getElementById('taskTextPreview');
+      const btnPause = document.getElementById('btnPauseTask');
+      const btnPauseText = document.getElementById('btnPauseText');
+      const pauseIcon = document.getElementById('pauseIcon');
+      const btnCancel = document.getElementById('btnCancelTask');
+
+      if (taskCard) taskCard.classList.remove('hidden');
+      if (progressBar) progressBar.style.width = '0%';
+      if (percentBadge) percentBadge.textContent = '0%';
+      if (statChunks) statChunks.textContent = 'Khởi tạo...';
+
+      let isPaused = false;
+
+      function resetButtons() {
+        btnGenerateFullSrt.disabled = false;
+        btnSrtText.textContent = `Xuất Full Bài (> 2 Giờ) Siêu Tốc (${concurrency} Luồng)`;
+        btnSrtIcon.setAttribute('data-lucide', 'zap');
+        btnSrtIcon.classList.remove('animate-spin');
+        lucide.createIcons();
+      }
+
       try {
-        const response = await fetch('/api/batch', {
+        const resp = await fetch('/api/tasks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
 
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error || `Lỗi máy chủ (${response.status})`);
+        if (!resp.ok) {
+          const errData = await resp.json().catch(() => ({}));
+          throw new Error(errData.error || `Lỗi máy chủ (${resp.status})`);
         }
 
-        const data = await response.json();
-        let audioUrl = data.audioUrl;
-        let blob = null;
+        const taskData = await resp.json();
+        const taskId = taskData.taskId;
+        state.currentTaskId = taskId;
 
-        // Nếu có audioBase64 (file nhỏ) và chưa có URL
-        if (!audioUrl && data.audioBase64) {
-          try {
-            const binaryAudio = atob(data.audioBase64);
-            const bytes = new Uint8Array(binaryAudio.length);
-            for (let i = 0; i < binaryAudio.length; i++) {
-              bytes[i] = binaryAudio.charCodeAt(i);
+        btnSrtText.textContent = `Đang xuất ${taskData.totalChunks} đoạn (${concurrency} Luồng, ${taskData.keyCount} Keys)...`;
+
+        // Thiết lập các nút điều khiển Pause/Resume/Cancel
+        if (btnPause) {
+          btnPause.onclick = async () => {
+            if (!isPaused) {
+              await fetch(`/api/tasks/${taskId}/pause`, { method: 'POST' });
+              isPaused = true;
+              btnPauseText.textContent = 'Tiếp tục';
+              if (pauseIcon) pauseIcon.setAttribute('data-lucide', 'play');
+              showToast('Đã tạm dừng tác vụ!', 'info');
+            } else {
+              await fetch(`/api/tasks/${taskId}/resume`, { method: 'POST' });
+              isPaused = false;
+              btnPauseText.textContent = 'Tạm dừng';
+              if (pauseIcon) pauseIcon.setAttribute('data-lucide', 'pause');
+              showToast('Đang tiếp tục xử lý...', 'info');
             }
-            const mime = data.format === 'wav' ? 'audio/wav' : 'audio/mpeg';
-            blob = new Blob([bytes], { type: mime });
-            audioUrl = URL.createObjectURL(blob);
-          } catch (e) {
-            console.warn('Lỗi decode base64:', e);
-          }
+            lucide.createIcons();
+          };
         }
 
-        const sizeStr = data.fileSize ? formatBytes(data.fileSize) : (blob ? formatBytes(blob.size) : '--');
+        if (btnCancel) {
+          btnCancel.onclick = async () => {
+            if (confirm('Bạn có chắc chắn muốn hủy bỏ tác vụ xuất âm thanh này?')) {
+              await fetch(`/api/tasks/${taskId}/cancel`, { method: 'POST' });
+              if (state.currentSse) state.currentSse.close();
+              if (taskCard) taskCard.classList.add('hidden');
+              showToast('Đã hủy tác vụ!', 'info');
+              resetButtons();
+            }
+          };
+        }
 
-        const itemData = {
-          id: Date.now(),
-          url: audioUrl,
-          audioUrl: data.audioUrl || audioUrl,
-          srtUrl: data.srtUrl || null,
-          blob: blob,
-          text: text,
-          format: data.format,
-          model: payload.model,
-          refId: refId || 'Mặc định',
-          durationSec: `${data.duration.toFixed(2)}s (${data.formattedDuration})`,
-          durationNum: data.duration,
-          size: sizeStr,
-          srt: data.srt,
-          chunksCount: data.chunksCount,
-          createdAt: new Date().toLocaleTimeString(),
-          title: (docTitleInput ? docTitleInput.value : '').trim() || 'Bài viết chưa đặt tên',
-          safeFileName: getSafeFileName()
+        // Lắng nghe SSE thời gian thực
+        if (state.currentSse) state.currentSse.close();
+        const sse = new EventSource(`/api/tasks/${taskId}/stream`);
+        state.currentSse = sse;
+
+        sse.onmessage = async (e) => {
+          try {
+            const data = JSON.parse(e.data);
+
+            if (data.type === 'progress') {
+              if (progressBar) progressBar.style.width = `${data.percent}%`;
+              if (percentBadge) percentBadge.textContent = `${data.percent}%`;
+              if (statChunks) statChunks.textContent = `${data.completed} / ${data.total}`;
+              if (statSpeed) statSpeed.textContent = `${data.speed} đoạn/s`;
+              if (statEta) statEta.textContent = data.eta > 0 ? `Còn ~${data.eta}s` : 'Sắp xong';
+              if (statKeys && data.keyStats) {
+                statKeys.textContent = `${data.keyStats.readyKeys}/${data.keyStats.totalKeys} Keys`;
+              }
+              if (textPreview && data.textPreview) {
+                textPreview.textContent = data.textPreview;
+              }
+              audioStatusBadge.textContent = `Đang tạo ${data.percent}% (${data.completed}/${data.total})`;
+            }
+
+            if (data.type === 'merging') {
+              audioStatusBadge.textContent = 'Đang ghép file SSD...';
+              if (textPreview) textPreview.textContent = data.message || 'Đang hợp nhất file âm thanh hoàn chỉnh...';
+            }
+
+            if (data.type === 'completed') {
+              sse.close();
+              state.currentSse = null;
+              if (taskCard) taskCard.classList.add('hidden');
+
+              // Nạp phụ đề srt từ url
+              let srtContent = '';
+              try {
+                const srtResp = await fetch(data.srtUrl);
+                if (srtResp.ok) srtContent = await srtResp.text();
+              } catch (err) {}
+
+              const sizeStr = data.fileSize ? formatBytes(data.fileSize) : '--';
+              const itemData = {
+                id: Date.now(),
+                taskId: taskId,
+                url: data.audioUrl,
+                audioUrl: data.audioUrl,
+                srtUrl: data.srtUrl,
+                blob: null,
+                text: text,
+                format: payload.format,
+                model: payload.model,
+                refId: refId || 'Mặc định',
+                durationSec: `${data.duration.toFixed(2)}s (${data.formattedDuration})`,
+                durationNum: data.duration,
+                size: sizeStr,
+                srt: srtContent,
+                chunksCount: data.totalChunks,
+                createdAt: new Date().toLocaleTimeString(),
+                title: payload.title,
+                safeFileName: payload.title
+              };
+
+              setAudioResult(itemData, true, true);
+              saveSettings();
+              showToast(`Tạo thành công Voice ${data.formattedDuration} (${data.totalChunks} đoạn)!`, 'success');
+              resetButtons();
+            }
+
+            if (data.type === 'error') {
+              sse.close();
+              throw new Error(data.error || 'Lỗi xử lý tác vụ');
+            }
+          } catch (err) {
+            console.error('SSE Message error:', err);
+          }
         };
 
-        setAudioResult(itemData, true, true);
-        saveSettings();
+        sse.onerror = (err) => {
+          console.warn('SSE warning:', err);
+        };
 
-        showToast(`Tạo Full bài thành công! (${data.chunksCount} đoạn, ${concurrency} luồng)`, 'success');
       } catch (err) {
-        console.error('Batch error:', err);
-        showToast(err.message || 'Lỗi khi tạo Full bài', 'error');
+        console.error('Task error:', err);
+        showToast(err.message || 'Lỗi khi tạo Task âm thanh', 'error');
         audioStatusBadge.textContent = 'Lỗi tạo';
         audioStatusBadge.className = 'text-[11px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20';
-      } finally {
-        btnGenerateFullSrt.disabled = false;
-        btnSrtText.textContent = `Xuất Full Bài + Phụ đề SRT (${concurrency} Luồng)`;
-        btnSrtIcon.setAttribute('data-lucide', 'zap');
-        btnSrtIcon.classList.remove('animate-spin');
-        lucide.createIcons();
+        if (taskCard) taskCard.classList.add('hidden');
+        resetButtons();
       }
     }
 
@@ -1517,10 +1727,16 @@
       };
 
       state.history.unshift(histItem);
-      if (state.history.length > 30) {
+
+      // Giới hạn tối đa 10 bản ghi: Nếu vượt quá 10 bản, tự động xoá các bản cũ nhất
+      while (state.history.length > MAX_HISTORY) {
         const removed = state.history.pop();
         if (removed && removed.id) {
           dbDeleteHistoryItem(removed.id);
+          deleteServerOutput(removed);
+          if (removed.url && typeof removed.url === 'string' && removed.url.startsWith('blob:')) {
+            try { URL.revokeObjectURL(removed.url); } catch (e) {}
+          }
         }
       }
 
@@ -1529,6 +1745,12 @@
     }
 
     function renderHistory() {
+      // Cập nhật số lượng bản ghi hiển thị (ví dụ: 3/10)
+      const countBadge = document.getElementById('historyCountBadge');
+      if (countBadge) {
+        countBadge.textContent = `${state.history.length}/${MAX_HISTORY}`;
+      }
+
       if (!state.history.length) {
         historyEmpty.classList.remove('hidden');
         historyList.innerHTML = '';
@@ -1611,6 +1833,13 @@
     }
 
     async function deleteHistoryItemById(id) {
+      const item = state.history.find(x => x.id === id);
+      if (item) {
+        if (item.url && typeof item.url === 'string' && item.url.startsWith('blob:')) {
+          try { URL.revokeObjectURL(item.url); } catch (e) {}
+        }
+        deleteServerOutput(item);
+      }
       state.history = state.history.filter(x => x.id !== id);
       renderHistory();
       await dbDeleteHistoryItem(id);
@@ -1620,6 +1849,14 @@
     async function clearHistory() {
       if (!state.history.length) return;
       if (!confirm('Bạn có chắc muốn xoá toàn bộ lịch sử xuất không?')) return;
+      state.history.forEach(item => {
+        if (item) {
+          if (item.url && typeof item.url === 'string' && item.url.startsWith('blob:')) {
+            try { URL.revokeObjectURL(item.url); } catch (e) {}
+          }
+          deleteServerOutput(item);
+        }
+      });
       state.history = [];
       renderHistory();
       await dbClearAllHistory();
@@ -1668,7 +1905,7 @@
       const eyeIcon = document.getElementById('eyeIcon');
 
       btnOpenApiKeyModal.onclick = () => {
-        customApiKeyInput.value = state.apiKey;
+        customApiKeyInput.value = state.apiKeys || state.apiKey;
         apiKeyModal.classList.remove('hidden');
       };
       btnCloseApiKeyModal.onclick = () => apiKeyModal.classList.add('hidden');
@@ -1676,26 +1913,31 @@
       btnSaveApiKey.onclick = () => {
         const val = customApiKeyInput.value.trim();
         if (val) {
-          state.apiKey = val;
-          localStorage.setItem('fish_api_key', val);
+          const keys = parseKeyList(val);
+          state.apiKeys = val;
+          state.apiKey = keys[0] || val;
+          localStorage.setItem('fish_api_keys', val);
+          localStorage.setItem('fish_api_key', state.apiKey);
           updateApiKeyDisplay();
-          showToast('Đã lưu API Key!', 'success');
+          showToast(`Đã lưu ${keys.length} API Key vào Multi-Key Pool!`, 'success');
           apiKeyModal.classList.add('hidden');
         } else {
           showToast('API Key không được để trống', 'error');
         }
       };
 
-      toggleApiKeyVisibility.onclick = () => {
-        if (customApiKeyInput.type === 'password') {
-          customApiKeyInput.type = 'text';
-          eyeIcon.setAttribute('data-lucide', 'eye-off');
-        } else {
-          customApiKeyInput.type = 'password';
-          eyeIcon.setAttribute('data-lucide', 'eye');
-        }
-        lucide.createIcons();
-      };
+      if (toggleApiKeyVisibility) {
+        toggleApiKeyVisibility.onclick = () => {
+          if (customApiKeyInput.type === 'password') {
+            customApiKeyInput.type = 'text';
+            if (eyeIcon) eyeIcon.setAttribute('data-lucide', 'eye-off');
+          } else {
+            customApiKeyInput.type = 'password';
+            if (eyeIcon) eyeIcon.setAttribute('data-lucide', 'eye');
+          }
+          lucide.createIcons();
+        };
+      }
 
       // Voice Exploration Modal
       const btnOpenExploreModal = document.getElementById('btnOpenExploreModal');

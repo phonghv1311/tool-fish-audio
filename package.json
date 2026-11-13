@@ -4,7 +4,8 @@
   "description": "Fish Audio Text-to-Speech Web Application",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node tests/audio.test.js && node tests/cache.test.js && node tests/network.test.js && node tests/task-manager.test.js && node tests/server-task.test.js"
   },
   "keywords": ["fish-audio", "tts", "text-to-speech", "ai-voice"],
   "author": "",
